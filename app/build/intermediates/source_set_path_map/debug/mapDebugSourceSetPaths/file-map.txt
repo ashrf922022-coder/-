@@ -1,0 +1,7 @@
+com.awridi.ai.app-pngs-0 /app/app/build/generated/res/pngs/debug
+com.awridi.ai.app-resValues-1 /app/app/build/generated/res/resValues/debug
+com.awridi.ai.app-packageDebugResources-2 /app/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.awridi.ai.app-packageDebugResources-3 /app/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.awridi.ai.app-debug-4 /app/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.awridi.ai.app-debug-5 /app/app/src/debug/res
+com.awridi.ai.app-main-6 /app/app/src/main/res
