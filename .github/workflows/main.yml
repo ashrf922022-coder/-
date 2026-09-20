@@ -1,0 +1,40 @@
+name: Extract AWRIDI Android Project
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Extract AWRIDI ZIP
+        run: |
+          ZIP="AWRIDI_AI_v3_1_Android_Project.zip"
+          mkdir -p extracted
+
+          unzip -o "$ZIP" -d extracted
+
+          if [ "$(find extracted -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1 ] && \
+             [ "$(find extracted -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 0 ]; then
+            INNER=$(find extracted -mindepth 1 -maxdepth 1 -type d)
+            cp -R "$INNER"/. .
+          else
+            cp -R extracted/. .
+          fi
+
+          rm -rf extracted
+
+      - name: Save project structure
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Extract AWRIDI Android project from ZIP" || echo "No changes to commit"
+          git push
