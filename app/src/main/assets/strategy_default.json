@@ -1,0 +1,14 @@
+{
+  "fastSma": 10,
+  "slowSma": 30,
+  "rsiPeriod": 14,
+  "rsiMin": 55.0,
+  "rsiMax": 75.0,
+  "atrPeriod": 14,
+  "atrStop": 2.0,
+  "atrTarget": 3.0,
+  "volumeMultiplier": 1.0,
+  "initialCapital": 10000.0,
+  "riskPerTrade": 1.0,
+  "maxBars": 500
+}

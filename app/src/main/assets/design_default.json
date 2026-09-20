@@ -1,0 +1,15 @@
+{
+  "appName": "AWRIDI AI",
+  "primary": "#6C8CFF",
+  "secondary": "#9AA7FF",
+  "background": "#0A0F1F",
+  "surface": "#121A33",
+  "text": "#F5F7FF",
+  "muted": "#AAB4D0",
+  "cardRadius": 20,
+  "showScan": true,
+  "showBacktest": true,
+  "showStrategy": true,
+  "showDesignStudio": true,
+  "compact": false
+}
