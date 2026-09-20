@@ -191,8 +191,16 @@ public class MainActivity extends Activity {
         Button save=btn("تطبيق وحفظ التصميم"); b.addView(save); content.addView(b);
         save.setOnClickListener(v->{
             for(int i=0;i<keys.length;i++){EditText e=(EditText)b.getChildAt(i+1);String val=e.getText().toString().trim(); if(!val.isEmpty()){try{design.put(keys[i],i==7?Integer.parseInt(val):val);}catch(Exception ex){}}}
-            design.put("showScan",scan.isChecked());design.put("showBacktest",bt.isChecked());design.put("showStrategy",st.isChecked());
-            save("design",design);applyTheme();showHome();
+            try {
+    design.put("showScan",scan.isChecked());
+    design.put("showBacktest",bt.isChecked());
+    design.put("showStrategy",st.isChecked());
+    save("design",design);
+    applyTheme();
+    showHome();
+} catch (JSONException ex) {
+    Toast.makeText(this,"تعذر حفظ التصميم: "+ex.getMessage(),Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
