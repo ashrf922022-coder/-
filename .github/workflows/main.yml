@@ -28,10 +28,13 @@ jobs:
 
           rm -rf extracted
 
+          # حذف Workflow الموجود داخل المشروع قبل git add
+          rm -f .github/workflows/build-apk.yml
+
       - name: Commit extracted project
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Extract AWRIDI Android project"
+          git commit -m "Extract AWRIDI Android project" || echo "No changes to commit"
           git push
