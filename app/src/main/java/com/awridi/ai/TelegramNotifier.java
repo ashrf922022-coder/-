@@ -9,9 +9,9 @@ import java.util.concurrent.ExecutorService;
 
 public class TelegramNotifier {
 
-    public static void sendTelegramAlertIfNeeded(SharedPreferences prefs, ExecutorService executor, GoldAnalysisEngine.AnalysisResult res) {
-        String token = prefs.getString(MainActivity.PREF_KEY_TELEGRAM_TOKEN, "").trim();
-        String chatId = prefs.getString(MainActivity.PREF_KEY_TELEGRAM_CHAT_ID, "").trim();
+    public static void sendTelegramAlertIfNeeded(SharedPreferences prefs, ExecutorService executor, com.awridi.ai.GoldAnalysisEngine.AnalysisResult res) {
+        String token = EncryptedPrefsHelper.getSecureString(prefs, MainActivity.PREF_KEY_TELEGRAM_TOKEN, "").trim();
+        String chatId = EncryptedPrefsHelper.getSecureString(prefs, MainActivity.PREF_KEY_TELEGRAM_CHAT_ID, "").trim();
 
         if (token.isEmpty() || chatId.isEmpty() || res == null) return;
 
