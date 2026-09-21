@@ -296,6 +296,14 @@ public class MainActivity extends Activity {
     }
 
     void displayAnalysisResult(AnalysisResult res) {
+        // Copy Analysis Action Card
+        LinearLayout copyActionCard = createCardBox();
+        Button copyBtn = createButton("📋 نسخ التحليل بالكامل", v -> copyAnalysisToClipboard(res));
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(-1, -2);
+        copyLp.setMargins(0, 4, 0, 4);
+        copyActionCard.addView(copyBtn, copyLp);
+        content.addView(copyActionCard);
+
         // Price & Overview Card
         LinearLayout priceCard = createCardBox();
         priceCard.addView(createTextView("🌟 السعر الحالي للذهب (XAU/USD)", 16, true));
@@ -360,6 +368,50 @@ public class MainActivity extends Activity {
         warningCard.addView(createTextView("⚠️ تحذير هام من المخاطر", 15, true));
         warningCard.addView(createTextView("سوق الذهب يتسم بالتقلب العالي. هذه الإشارات والمعلومات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.", 13, false));
         content.addView(warningCard);
+    }
+
+    void copyAnalysisToClipboard(AnalysisResult res) {
+        if (res == null) return;
+        StringBuilder sb = new StringBuilder();
+        sb.append("🏆 *تحليل الذهب AWRIDI AI (XAU/USD)*\n");
+        sb.append("----------------------------------\n");
+        sb.append("💰 *السعر الحالي:* $").append(String.format(Locale.US, "%.2f", res.currentPrice)).append("\n");
+        sb.append("🎯 *قرار النظام:* ").append(res.signal).append("\n");
+        sb.append("📊 *نسبة توافق الشروط (الثقة):* ").append(String.format(Locale.US, "%.0f%%", res.confidenceScore * 100)).append("\n\n");
+
+        if (res.signal.contains("SETUP")) {
+            sb.append("📐 *خطة إدارة المخاطر:*\n");
+            sb.append("• سعر الدخول (Entry): $").append(String.format(Locale.US, "%.2f", res.entryPrice)).append("\n");
+            sb.append("• وقف الخسارة (Stop Loss): $").append(String.format(Locale.US, "%.2f", res.stopLoss)).append("\n");
+            sb.append("• الهدف الأول (TP1): $").append(String.format(Locale.US, "%.2f", res.takeProfit1)).append("\n");
+            sb.append("• الهدف الثاني (TP2): $").append(String.format(Locale.US, "%.2f", res.takeProfit2)).append("\n");
+            sb.append("• نسبة المخاطرة/العائد (R:R): 1 : ").append(String.format(Locale.US, "%.2f", res.riskRewardRatio)).append("\n");
+            sb.append("• الحجم المقترح للصفقة: ").append(String.format(Locale.US, "%.2f", res.suggestedLot)).append(" اللوت\n\n");
+        }
+
+        sb.append("📖 *شرح الإشارة والتحليل التفصيلي:*\n");
+        sb.append(res.arabicExplanation).append("\n\n");
+
+        sb.append("📊 *المؤشرات التقنية:*\n");
+        sb.append("• الاتجاه العام (15m): ").append(res.trend).append("\n");
+        sb.append("• اتجاه الإطار الأكبر (1h/4h): ").append(res.htfTrend).append("\n");
+        sb.append("• RSI (14): ").append(String.format(Locale.US, "%.1f", res.rsi)).append(" (").append(res.rsiStatus).append(")\n");
+        sb.append("• MACD Hist: ").append(String.format(Locale.US, "%.2f", res.macdHist)).append(" (").append(res.macdHist > 0 ? "إيجابي" : "سلبي").append(")\n");
+        sb.append("• المتوسطات: EMA20=$").append(String.format(Locale.US, "%.1f", res.ema20))
+          .append(" | EMA50=$").append(String.format(Locale.US, "%.1f", res.ema50))
+          .append(" | EMA200=$").append(String.format(Locale.US, "%.1f", res.ema200)).append("\n");
+        sb.append("• ATR (14): $").append(String.format(Locale.US, "%.2f", res.atr)).append(" (التقلب: ").append(res.volatilityStatus).append(")\n");
+        sb.append("• الدعم والمقاومة: R1=$").append(String.format(Locale.US, "%.1f", res.resistance))
+          .append(" | S1=$").append(String.format(Locale.US, "%.1f", res.support)).append("\n\n");
+
+        sb.append("⚠️ *تحذير هام:* سوق الذهب يتسم بالتقلب العالي. هذه البيانات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.");
+
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("AWRIDI_Gold_Analysis", sb.toString());
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(clip);
+            Toast.makeText(this, "تم نسخ التحليل بالكامل ✓", Toast.LENGTH_SHORT).show();
+        }
     }
 
     // --- SCREEN 2: PAPER TRADING ---
