@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
     }
 
     void runGoldAnalysis() {
-        String apiKey = prefs.getString(PREF_KEY_API_KEY, "").trim();
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
         if (apiKey.isEmpty()) {
             statusText.setText("⚠️ يرجى إدخال مفتاح Twelve Data API في شاشة الإعدادات أولًا.");
             statusText.setTextColor(Color.YELLOW);
@@ -531,7 +531,7 @@ public class MainActivity extends Activity {
     }
 
     void runBacktestProcess() {
-        String apiKey = prefs.getString(PREF_KEY_API_KEY, "").trim();
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
         if (apiKey.isEmpty()) {
             Toast.makeText(this, "أدخل مفتاح Twelve Data من شاشة الإعدادات أولًا.", Toast.LENGTH_SHORT).show();
             return;
@@ -601,15 +601,15 @@ public class MainActivity extends Activity {
         card.addView(createTextView("⚙️ إعدادات النظام والمفاتيح", 20, true));
 
         card.addView(createTextView("🔑 Twelve Data API Key:", 14, true));
-        apiKeyInput = createEditText("أدخل API Key...", prefs.getString(PREF_KEY_API_KEY, ""));
+        apiKeyInput = createEditText("أدخل API Key...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, ""));
         card.addView(apiKeyInput);
 
         card.addView(createTextView("🤖 Telegram Bot Token (اختياري):", 14, true));
-        tgTokenInput = createEditText("Bot Token...", prefs.getString(PREF_KEY_TELEGRAM_TOKEN, ""));
+        tgTokenInput = createEditText("Bot Token...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_TOKEN, ""));
         card.addView(tgTokenInput);
 
         card.addView(createTextView("💬 Telegram Chat ID (اختياري):", 14, true));
-        tgChatIdInput = createEditText("Chat ID...", prefs.getString(PREF_KEY_TELEGRAM_CHAT_ID, ""));
+        tgChatIdInput = createEditText("Chat ID...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_CHAT_ID, ""));
         card.addView(tgChatIdInput);
 
         card.addView(createTextView("💰 رأس المال التجريبي ($):", 14, true));
@@ -621,19 +621,20 @@ public class MainActivity extends Activity {
         card.addView(riskPctInput);
 
         card.addView(createTextView("🔗 TradingView Webhook URL:", 14, true));
-        tvWebhookInput = createEditText("Webhook URL...", prefs.getString(PREF_KEY_TV_WEBHOOK, ""));
+        tvWebhookInput = createEditText("Webhook URL...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TV_WEBHOOK, ""));
         card.addView(tvWebhookInput);
 
         Button saveBtn = createButton("💾 حفظ الإعدادات", v -> {
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_API_KEY, apiKeyInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TELEGRAM_TOKEN, tgTokenInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TELEGRAM_CHAT_ID, tgChatIdInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TV_WEBHOOK, tvWebhookInput.getText().toString().trim());
+
             prefs.edit()
-                .putString(PREF_KEY_API_KEY, apiKeyInput.getText().toString().trim())
-                .putString(PREF_KEY_TELEGRAM_TOKEN, tgTokenInput.getText().toString().trim())
-                .putString(PREF_KEY_TELEGRAM_CHAT_ID, tgChatIdInput.getText().toString().trim())
                 .putString(PREF_KEY_CAPITAL, capitalInput.getText().toString().trim())
                 .putString(PREF_KEY_RISK_PCT, riskPctInput.getText().toString().trim())
-                .putString(PREF_KEY_TV_WEBHOOK, tvWebhookInput.getText().toString().trim())
                 .apply();
-            Toast.makeText(this, "تم حفظ الإعدادات بنجاح!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تم حفظ الإعدادات بنجاح الأمني!", Toast.LENGTH_SHORT).show();
             showHomeScreen();
         });
         card.addView(saveBtn);
