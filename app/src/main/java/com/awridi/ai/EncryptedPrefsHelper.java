@@ -16,23 +16,24 @@ public class EncryptedPrefsHelper {
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
     private static final String AES_GCM_NO_PADDING = "AES/GCM/NoPadding";
 
-    public static void saveSecureString(Context context, SharedPreferences prefs, String key, String value) {
+    public static boolean saveSecureString(Context context, SharedPreferences prefs, String key, String value) {
         if (value == null || value.trim().isEmpty()) {
             prefs.edit().remove(key).remove(key + "_enc").apply();
-            return;
+            return true;
         }
         try {
             String encrypted = encryptString(value);
-            if (encrypted != null) {
-                // Save encrypted string and remove any leftover unencrypted plaintext string
+            if (encrypted != null && !encrypted.isEmpty()) {
+                // Save ONLY encrypted string and ensure unencrypted key is removed
                 prefs.edit().putString(key + "_enc", encrypted).remove(key).apply();
-                return;
+                return true;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-        // Fallback only if KeyStore cipher encryption is unavailable
-        prefs.edit().putString(key, value).apply();
+        // Failure handling: Clear key securely rather than writing plaintext
+        prefs.edit().remove(key).remove(key + "_enc").apply();
+        return false;
     }
 
     public static String getSecureString(SharedPreferences prefs, String key, String defaultValue) {
@@ -47,7 +48,7 @@ public class EncryptedPrefsHelper {
                 e.printStackTrace();
             }
         }
-        return prefs.getString(key, defaultValue);
+        return defaultValue;
     }
 
     private static synchronized SecretKey getOrCreateSecretKey() throws Exception {
