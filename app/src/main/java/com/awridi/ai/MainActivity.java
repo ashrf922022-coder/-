@@ -40,8 +40,9 @@ public class MainActivity extends Activity {
     EditText apiKeyInput, tgTokenInput, tgChatIdInput, capitalInput, riskPctInput, tvWebhookInput;
     TextView statusText;
 
-    // Current Analysis Result Cache
-    AnalysisResult currentAnalysis = null;
+    // Current Analysis Cache & Intelligence Output
+    GoldAnalysisEngine.AnalysisResult currentAnalysis = null;
+    MarketIntelligenceBot.MarketIntelligenceReport currentIntelligenceReport = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,10 +67,6 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return new JSONObject();
         }
-    }
-
-    void saveJsonObject(String key, JSONObject o) {
-        prefs.edit().putString(key, o.toString()).apply();
     }
 
     void applyTheme() {
@@ -187,8 +184,8 @@ public class MainActivity extends Activity {
         navBar.setBackgroundColor(surfaceColor);
         navBar.setGravity(Gravity.CENTER);
 
-        String[] tabs = {"الرئيسية", "التداول التجريبي", "Backtest", "المساعد", "الإعدادات"};
-        String[] keys = {"home", "paper", "backtest", "assistant", "settings"};
+        String[] tabs = {"الرئيسية", "ذكاء السوق", "التداول التجريبي", "Backtest", "المساعد", "الإعدادات"};
+        String[] keys = {"home", "intel", "paper", "backtest", "assistant", "settings"};
 
         for (int i = 0; i < tabs.length; i++) {
             final String tabKey = keys[i];
@@ -209,6 +206,7 @@ public class MainActivity extends Activity {
     void switchTab(String tabKey) {
         switch (tabKey) {
             case "home": showHomeScreen(); break;
+            case "intel": showMarketIntelligenceScreen(); break;
             case "paper": showPaperTradingScreen(); break;
             case "backtest": showBacktestScreen(); break;
             case "assistant": showAiAssistantScreen(); break;
@@ -216,7 +214,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // --- SCREEN 1: HOME (GOLD XAU/USD ANALYSIS) ---
+    // --- SCREEN 1: HOME ---
     void showHomeScreen() {
         setupBaseLayout("home");
 
@@ -248,8 +246,49 @@ public class MainActivity extends Activity {
         }
     }
 
+    // --- SCREEN 2: MARKET INTELLIGENCE ---
+    void showMarketIntelligenceScreen() {
+        setupBaseLayout("intel");
+
+        LinearLayout heroCard = createCardBox();
+        heroCard.addView(createTextView("🧠 طبقة ذكاء السوق (Market Intelligence)", 20, true));
+        heroCard.addView(createTextView("تحليل السلوك التاريخي + التشابه + Walk-Forward + منع Look-Ahead Bias", 13, false));
+        content.addView(heroCard);
+
+        if (currentIntelligenceReport != null) {
+            displayMarketIntelligenceReport(currentIntelligenceReport);
+        } else {
+            LinearLayout emptyCard = createCardBox();
+            emptyCard.addView(createTextView("قم بتشغيل تحليل الذهب من الشاشة الرئيسية لتحديث نتائج ذكاء السوق.", 14, false));
+            content.addView(emptyCard);
+        }
+    }
+
+    void displayMarketIntelligenceReport(MarketIntelligenceBot.MarketIntelligenceReport r) {
+        LinearLayout reportCard = createCardBox();
+        reportCard.addView(createTextView("📊 ملخص ذكاء السوق الحاضر والتاريخي", 18, true));
+        reportCard.addView(createTextView(r.fullArabicSummary, 14, false));
+
+        // Copy & Share Actions
+        Button copyBtn = createSecondaryButton("📋 نسخ التحليل بالكامل", v -> {
+            AnalysisShareHelper.copyTextToClipboard(this, r.fullArabicSummary);
+        });
+
+        Button shareBtn = createButton("📤 مشاركة النتائج", v -> {
+            AnalysisShareHelper.shareText(this, r.fullArabicSummary, "مشاركة نتائج ذكاء السوق XAU/USD");
+        });
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.addView(copyBtn, new LinearLayout.LayoutParams(0, -2, 1));
+        btns.addView(shareBtn, new LinearLayout.LayoutParams(0, -2, 1));
+        reportCard.addView(btns);
+
+        content.addView(reportCard);
+    }
+
     void runGoldAnalysis() {
-        String apiKey = prefs.getString(PREF_KEY_API_KEY, "").trim();
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
         if (apiKey.isEmpty()) {
             statusText.setText("⚠️ يرجى إدخال مفتاح Twelve Data API في شاشة الإعدادات أولًا.");
             statusText.setTextColor(Color.YELLOW);
@@ -262,10 +301,10 @@ public class MainActivity extends Activity {
         executor.submit(() -> {
             try {
                 // Fetch Multi-Timeframe Candles
-                Map<String, List<Bar>> mtfBars = new HashMap<>();
+                Map<String, List<GoldAnalysisEngine.Bar>> mtfBars = new HashMap<>();
                 String[] intervals = {"5min", "15min", "1h", "4h"};
                 for (String tf : intervals) {
-                    List<Bar> bars = fetchTwelveData(GOLD_SYMBOL, tf, apiKey, 150);
+                    List<GoldAnalysisEngine.Bar> bars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, tf, apiKey, 150);
                     if (bars != null && !bars.isEmpty()) {
                         mtfBars.put(tf, bars);
                     }
@@ -275,11 +314,14 @@ public class MainActivity extends Activity {
                     throw new Exception("تعذر جلب بيانات الذهب من Twelve Data. تأكد من صحة المفتاح والاتصال.");
                 }
 
-                AnalysisResult result = analyzeGold(mtfBars);
+                GoldAnalysisEngine.AnalysisResult result = GoldAnalysisEngine.analyzeGold(mtfBars, prefs);
                 currentAnalysis = result;
 
+                // Run Market Intelligence Engine
+                currentIntelligenceReport = MarketIntelligenceBot.generateIntelligence(mtfBars, prefs);
+
                 runOnUiThread(() -> {
-                    statusText.setText("✅ اكتمل التحليل بنجاح!");
+                    statusText.setText("✅ اكتمل التحليل وبناء ذكاء السوق بنجاح!");
                     statusText.setTextColor(Color.GREEN);
                     showHomeScreen(); // Refresh view
 
@@ -295,7 +337,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    void displayAnalysisResult(AnalysisResult res) {
+    void displayAnalysisResult(GoldAnalysisEngine.AnalysisResult res) {
         // Price & Overview Card
         LinearLayout priceCard = createCardBox();
         priceCard.addView(createTextView("🌟 السعر الحالي للذهب (XAU/USD)", 16, true));
@@ -362,7 +404,7 @@ public class MainActivity extends Activity {
         content.addView(warningCard);
     }
 
-    // --- SCREEN 2: PAPER TRADING ---
+    // --- PAPER TRADING ---
     void showPaperTradingScreen() {
         setupBaseLayout("paper");
 
@@ -371,13 +413,13 @@ public class MainActivity extends Activity {
         titleCard.addView(createTextView("اختبر مهاراتك دون المخاطرة بأي أموال حقيقية.", 13, false));
         content.addView(titleCard);
 
-        List<PaperTrade> trades = loadPaperTrades();
+        List<PaperTradingManager.PaperTrade> trades = PaperTradingManager.loadPaperTrades(prefs);
         double initialCap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
         double totalPnl = 0;
         int winCount = 0;
         int closedCount = 0;
 
-        for (PaperTrade t : trades) {
+        for (PaperTradingManager.PaperTrade t : trades) {
             if (!t.status.equals("OPEN")) {
                 totalPnl += t.pnl;
                 closedCount++;
@@ -403,7 +445,7 @@ public class MainActivity extends Activity {
             historyCard.addView(createTextView("لا توجد صفقات تجريبية مسجلة بعد. يمكنك إضافتها عند إجراء التحليل.", 13, false));
         } else {
             for (int i = trades.size() - 1; i >= 0; i--) {
-                final PaperTrade pt = trades.get(i);
+                final PaperTradingManager.PaperTrade pt = trades.get(i);
                 LinearLayout item = createCardBox();
                 item.addView(createTextView("📌 " + pt.type + " " + pt.symbol + " (" + pt.status + ")", 15, true));
                 item.addView(createTextView("التاريخ: " + pt.date + " | الدخول: $" + String.format(Locale.US, "%.2f", pt.entryPrice), 13, false));
@@ -425,9 +467,9 @@ public class MainActivity extends Activity {
         content.addView(historyCard);
     }
 
-    void executePaperTradeFromSignal(AnalysisResult res) {
-        List<PaperTrade> list = loadPaperTrades();
-        PaperTrade t = new PaperTrade();
+    void executePaperTradeFromSignal(GoldAnalysisEngine.AnalysisResult res) {
+        List<PaperTradingManager.PaperTrade> list = PaperTradingManager.loadPaperTrades(prefs);
+        PaperTradingManager.PaperTrade t = new PaperTradingManager.PaperTrade();
         t.id = UUID.randomUUID().toString();
         t.date = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
         t.symbol = GOLD_SYMBOL;
@@ -441,15 +483,15 @@ public class MainActivity extends Activity {
         t.notes = "صفقة منفذة بناء على إشارة النظام";
 
         list.add(t);
-        savePaperTrades(list);
+        PaperTradingManager.savePaperTrades(prefs, list);
 
         Toast.makeText(this, "تم إضافة الصفقة التجريبية إلى السجل بنجاح!", Toast.LENGTH_SHORT).show();
         showPaperTradingScreen();
     }
 
-    void closePaperTrade(PaperTrade trade, boolean isWin) {
-        List<PaperTrade> list = loadPaperTrades();
-        for (PaperTrade t : list) {
+    void closePaperTrade(PaperTradingManager.PaperTrade trade, boolean isWin) {
+        List<PaperTradingManager.PaperTrade> list = PaperTradingManager.loadPaperTrades(prefs);
+        for (PaperTradingManager.PaperTrade t : list) {
             if (t.id.equals(trade.id)) {
                 t.status = isWin ? "WIN" : "LOSS";
                 double riskAmount = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000")) * (Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0")) / 100.0);
@@ -458,63 +500,11 @@ public class MainActivity extends Activity {
                 break;
             }
         }
-        savePaperTrades(list);
+        PaperTradingManager.savePaperTrades(prefs, list);
         showPaperTradingScreen();
     }
 
-    List<PaperTrade> loadPaperTrades() {
-        List<PaperTrade> list = new ArrayList<>();
-        try {
-            String jsonStr = prefs.getString(PREF_KEY_PAPER_TRADES, "[]");
-            JSONArray arr = new JSONArray(jsonStr);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject obj = arr.getJSONObject(i);
-                PaperTrade t = new PaperTrade();
-                t.id = obj.optString("id");
-                t.date = obj.optString("date");
-                t.symbol = obj.optString("symbol");
-                t.type = obj.optString("type");
-                t.entryPrice = obj.optDouble("entryPrice");
-                t.stopLoss = obj.optDouble("stopLoss");
-                t.tp1 = obj.optDouble("tp1");
-                t.tp2 = obj.optDouble("tp2");
-                t.status = obj.optString("status");
-                t.pnl = obj.optDouble("pnl");
-                t.notes = obj.optString("notes");
-                list.add(t);
-            }
-        } catch (Exception e) { e.printStackTrace(); }
-        return list;
-    }
-
-    void savePaperTrades(List<PaperTrade> list) {
-        try {
-            JSONArray arr = new JSONArray();
-            for (PaperTrade t : list) {
-                JSONObject obj = new JSONObject();
-                obj.put("id", t.id);
-                obj.put("date", t.date);
-                obj.put("symbol", t.symbol);
-                obj.put("type", t.type);
-                obj.put("entryPrice", t.entryPrice);
-                obj.put("stopLoss", t.stopLoss);
-                obj.put("tp1", t.tp1);
-                obj.put("tp2", t.tp2);
-                obj.put("status", t.status);
-                obj.put("pnl", t.pnl);
-                obj.put("notes", t.notes);
-                arr.put(obj);
-            }
-            prefs.edit().putString(PREF_KEY_PAPER_TRADES, arr.toString()).apply();
-        } catch (Exception e) { e.printStackTrace(); }
-    }
-
-    static class PaperTrade {
-        String id, date, symbol, type, status, notes;
-        double entryPrice, stopLoss, tp1, tp2, pnl;
-    }
-
-    // --- SCREEN 3: BACKTESTING ---
+    // --- BACKTESTING ---
     void showBacktestScreen() {
         setupBaseLayout("backtest");
 
@@ -531,7 +521,7 @@ public class MainActivity extends Activity {
     }
 
     void runBacktestProcess() {
-        String apiKey = prefs.getString(PREF_KEY_API_KEY, "").trim();
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
         if (apiKey.isEmpty()) {
             Toast.makeText(this, "أدخل مفتاح Twelve Data من شاشة الإعدادات أولًا.", Toast.LENGTH_SHORT).show();
             return;
@@ -539,8 +529,8 @@ public class MainActivity extends Activity {
 
         executor.submit(() -> {
             try {
-                List<Bar> bars = fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
-                BacktestResult bt = runGoldBacktest(bars);
+                List<GoldAnalysisEngine.Bar> bars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
+                BacktestEngine.BacktestResult bt = BacktestEngine.runGoldBacktest(bars, prefs);
 
                 runOnUiThread(() -> {
                     showBacktestScreen(); // clear view
@@ -567,7 +557,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    // --- SCREEN 4: AI ASSISTANT ---
+    // --- AI ASSISTANT ---
     void showAiAssistantScreen() {
         setupBaseLayout("assistant");
 
@@ -593,7 +583,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    // --- SCREEN 5: SETTINGS & INTEGRATIONS ---
+    // --- SETTINGS ---
     void showSettingsScreen() {
         setupBaseLayout("settings");
 
@@ -601,15 +591,15 @@ public class MainActivity extends Activity {
         card.addView(createTextView("⚙️ إعدادات النظام والمفاتيح", 20, true));
 
         card.addView(createTextView("🔑 Twelve Data API Key:", 14, true));
-        apiKeyInput = createEditText("أدخل API Key...", prefs.getString(PREF_KEY_API_KEY, ""));
+        apiKeyInput = createEditText("أدخل API Key...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, ""));
         card.addView(apiKeyInput);
 
         card.addView(createTextView("🤖 Telegram Bot Token (اختياري):", 14, true));
-        tgTokenInput = createEditText("Bot Token...", prefs.getString(PREF_KEY_TELEGRAM_TOKEN, ""));
+        tgTokenInput = createEditText("Bot Token...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_TOKEN, ""));
         card.addView(tgTokenInput);
 
         card.addView(createTextView("💬 Telegram Chat ID (اختياري):", 14, true));
-        tgChatIdInput = createEditText("Chat ID...", prefs.getString(PREF_KEY_TELEGRAM_CHAT_ID, ""));
+        tgChatIdInput = createEditText("Chat ID...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_CHAT_ID, ""));
         card.addView(tgChatIdInput);
 
         card.addView(createTextView("💰 رأس المال التجريبي ($):", 14, true));
@@ -621,359 +611,29 @@ public class MainActivity extends Activity {
         card.addView(riskPctInput);
 
         card.addView(createTextView("🔗 TradingView Webhook URL:", 14, true));
-        tvWebhookInput = createEditText("Webhook URL...", prefs.getString(PREF_KEY_TV_WEBHOOK, ""));
+        tvWebhookInput = createEditText("Webhook URL...", EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TV_WEBHOOK, ""));
         card.addView(tvWebhookInput);
 
         Button saveBtn = createButton("💾 حفظ الإعدادات", v -> {
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_API_KEY, apiKeyInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TELEGRAM_TOKEN, tgTokenInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TELEGRAM_CHAT_ID, tgChatIdInput.getText().toString().trim());
+            EncryptedPrefsHelper.saveSecureString(this, prefs, PREF_KEY_TV_WEBHOOK, tvWebhookInput.getText().toString().trim());
+
             prefs.edit()
-                .putString(PREF_KEY_API_KEY, apiKeyInput.getText().toString().trim())
-                .putString(PREF_KEY_TELEGRAM_TOKEN, tgTokenInput.getText().toString().trim())
-                .putString(PREF_KEY_TELEGRAM_CHAT_ID, tgChatIdInput.getText().toString().trim())
                 .putString(PREF_KEY_CAPITAL, capitalInput.getText().toString().trim())
                 .putString(PREF_KEY_RISK_PCT, riskPctInput.getText().toString().trim())
-                .putString(PREF_KEY_TV_WEBHOOK, tvWebhookInput.getText().toString().trim())
                 .apply();
-            Toast.makeText(this, "تم حفظ الإعدادات بنجاح!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تم حفظ الإعدادات بنجاح الأمني!", Toast.LENGTH_SHORT).show();
             showHomeScreen();
         });
         card.addView(saveBtn);
         content.addView(card);
-
-        // TradingView Integration Help Card
-        LinearLayout tvCard = createCardBox();
-        tvCard.addView(createTextView("📡 ربط إشارات TradingView (Webhook)", 16, true));
-        tvCard.addView(createTextView("لربط تنبيهات TradingView مع التطبيق أو التليجرام، قم بإعداد التنبيه في TradingView كالتالي:\n" +
-                "• صيغة الرسالة (JSON):\n" +
-                "{\n" +
-                "  \"ticker\": \"XAUUSD\",\n" +
-                "  \"action\": \"{{strategy.order.action}}\",\n" +
-                "  \"price\": \"{{close}}\",\n" +
-                "  \"time\": \"{{timenow}}\"\n" +
-                "}", 13, false));
-        content.addView(tvCard);
     }
 
-    // --- TWELVE DATA API ENGINE ---
-    static class Bar {
-        double o, h, l, c, v;
-        Bar(double o, double h, double l, double c, double v) {
-            this.o = o; this.h = h; this.l = l; this.c = c; this.v = v;
-        }
-    }
-
-    List<Bar> fetchTwelveData(String sym, String interval, String apiKey, int count) throws Exception {
-        String urlStr = "https://api.twelvedata.com/time_series?symbol=" + URLEncoder.encode(sym, "UTF-8")
-                + "&interval=" + interval + "&outputsize=" + count + "&apikey=" + URLEncoder.encode(apiKey, "UTF-8");
-
-        URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(12000);
-        conn.setReadTimeout(12000);
-
-        if (conn.getResponseCode() != 200) {
-            throw new Exception("استجابة غير صالحة من السيرفر: " + conn.getResponseCode());
-        }
-
-        BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = r.readLine()) != null) sb.append(line);
-        r.close();
-
-        JSONObject json = new JSONObject(sb.toString());
-        if (!json.has("values")) {
-            throw new Exception(json.optString("message", "لا تتوفر بيانات للرمز المطلوب"));
-        }
-
-        JSONArray arr = json.getJSONArray("values");
-        List<Bar> bars = new ArrayList<>();
-        for (int i = arr.length() - 1; i >= 0; i--) {
-            JSONObject obj = arr.getJSONObject(i);
-            bars.add(new Bar(
-                    obj.getDouble("open"),
-                    obj.getDouble("high"),
-                    obj.getDouble("low"),
-                    obj.getDouble("close"),
-                    obj.optDouble("volume", 0)
-            ));
-        }
-        return bars;
-    }
-
-    // --- TECHNICAL INDICATORS & ANALYSIS ENGINE ---
-    static class AnalysisResult {
-        double currentPrice;
-        String signal; // BUY SETUP, SELL SETUP, WAIT, NO TRADE
-        double confidenceScore;
-        double entryPrice, stopLoss, takeProfit1, takeProfit2, riskRewardRatio, suggestedLot;
-        String trend;
-        String htfTrend;
-        double rsi;
-        String rsiStatus;
-        double macdHist;
-        double ema20, ema50, ema200;
-        double atr;
-        String volatilityStatus;
-        double support, resistance;
-        String arabicExplanation;
-    }
-
-    AnalysisResult analyzeGold(Map<String, List<Bar>> mtfBars) {
-        AnalysisResult res = new AnalysisResult();
-        List<Bar> bars15m = mtfBars.get("15min");
-        if (bars15m == null || bars15m.isEmpty()) bars15m = mtfBars.values().iterator().next();
-
-        int n = bars15m.size();
-        Bar latest = bars15m.get(n - 1);
-        res.currentPrice = latest.c;
-
-        // Calculate Indicators on 15m
-        res.rsi = calcRSI(bars15m, 14, n - 1);
-        res.macdHist = calcMACDHist(bars15m, n - 1);
-        res.ema20 = calcEMA(bars15m, 20, n - 1);
-        res.ema50 = calcEMA(bars15m, 50, n - 1);
-        res.ema200 = calcEMA(bars15m, 200, n - 1);
-        res.atr = calcATR(bars15m, 14, n - 1);
-
-        // Evaluate Higher Timeframe (1h/4h) Trend
-        res.htfTrend = "متوافق";
-        List<Bar> bars1h = mtfBars.get("1h");
-        if (bars1h != null && !bars1h.isEmpty()) {
-            double htfEma50 = calcEMA(bars1h, 50, bars1h.size() - 1);
-            Bar last1h = bars1h.get(bars1h.size() - 1);
-            if (last1h.c > htfEma50) res.htfTrend = "صاعد (1h) 🟢";
-            else res.htfTrend = "هابط (1h) 🔴";
-        }
-
-        // RSI Status
-        if (res.rsi >= 70) res.rsiStatus = "تشبع شرائي Overbought";
-        else if (res.rsi <= 30) res.rsiStatus = "تشبع بيعي Oversold";
-        else res.rsiStatus = "متوازن Neutral";
-
-        // Support and Resistance Pivot Points
-        double pivot = (latest.h + latest.l + latest.c) / 3.0;
-        res.resistance = (2 * pivot) - latest.l;
-        res.support = (2 * pivot) - latest.h;
-
-        // Trend Determination
-        if (res.currentPrice > res.ema200 && res.ema20 > res.ema50) {
-            res.trend = "صاعد قوي 🟢";
-        } else if (res.currentPrice < res.ema200 && res.ema20 < res.ema50) {
-            res.trend = "هابط قوي 🔴";
-        } else {
-            res.trend = "عرضي / غير محدد 🟡";
-        }
-
-        // Volatility
-        res.volatilityStatus = res.atr > 4.0 ? "مرتفع جدًا" : res.atr > 2.0 ? "متوسط" : "منخفض";
-
-        // Multi-Condition Signal Decision Engine
-        boolean buyCondition = res.currentPrice > res.ema50 && res.rsi >= 45 && res.rsi <= 68 && res.macdHist > 0 && res.ema20 > res.ema50;
-        boolean sellCondition = res.currentPrice < res.ema50 && res.rsi <= 55 && res.rsi >= 32 && res.macdHist < 0 && res.ema20 < res.ema50;
-
-        if (buyCondition && !sellCondition) {
-            res.signal = "BUY SETUP 🟢";
-            res.confidenceScore = 0.85;
-            res.entryPrice = res.currentPrice;
-            res.stopLoss = res.entryPrice - (res.atr * 1.5);
-            res.takeProfit1 = res.entryPrice + (res.atr * 1.5);
-            res.takeProfit2 = res.entryPrice + (res.atr * 3.0);
-        } else if (sellCondition && !buyCondition) {
-            res.signal = "SELL SETUP 🔴";
-            res.confidenceScore = 0.85;
-            res.entryPrice = res.currentPrice;
-            res.stopLoss = res.entryPrice + (res.atr * 1.5);
-            res.takeProfit1 = res.entryPrice - (res.atr * 1.5);
-            res.takeProfit2 = res.entryPrice - (res.atr * 3.0);
-        } else if (Math.abs(res.rsi - 50) < 5 || res.volatilityStatus.equals("مرتفع جدًا")) {
-            res.signal = "NO TRADE 🚫";
-            res.confidenceScore = 0.30;
-            res.entryPrice = res.currentPrice;
-            res.stopLoss = 0; res.takeProfit1 = 0; res.takeProfit2 = 0;
-        } else {
-            res.signal = "WAIT ⏳";
-            res.confidenceScore = 0.50;
-            res.entryPrice = res.currentPrice;
-            res.stopLoss = 0; res.takeProfit1 = 0; res.takeProfit2 = 0;
-        }
-
-        // Calculate Risk / Position Size
-        if (res.stopLoss > 0) {
-            double riskDiff = Math.abs(res.entryPrice - res.stopLoss);
-            res.riskRewardRatio = Math.abs(res.takeProfit1 - res.entryPrice) / Math.max(0.1, riskDiff);
-
-            double capital = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
-            double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
-            double maxRiskUsd = capital * (riskPct / 100.0);
-            res.suggestedLot = maxRiskUsd / (riskDiff * 100.0); // 1 Lot XAU = $100 per $1 move
-        }
-
-        // Generate Arabic Rationale
-        res.arabicExplanation = generateArabicRationale(res);
-
-        return res;
-    }
-
-    String generateArabicRationale(AnalysisResult res) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("• الاتجاه الحالي (15m): ").append(res.trend).append("\n");
-        sb.append("• اتجاه الإطار الأكبر (1h): ").append(res.htfTrend).append("\n");
-
-        if (res.signal.contains("BUY")) {
-            sb.append("• السبب: السعر فوق EMA50 وزخم MACD إيجابي مع استقرار RSI عند ").append(String.format(Locale.US, "%.1f", res.rsi)).append(".\n");
-            sb.append("• المؤشرات المؤيدة: EMA20 أعلى من EMA50 ، شريط MACD موجب.\n");
-            sb.append("• النصحية: دخول شراء مع الالتزام التام بوقف الخسارة عند $").append(String.format(Locale.US, "%.2f", res.stopLoss)).append(".");
-        } else if (res.signal.contains("SELL")) {
-            sb.append("• السبب: السعر أسفل EMA50 وزخم MACD سلبي مع استقرار RSI عند ").append(String.format(Locale.US, "%.1f", res.rsi)).append(".\n");
-            sb.append("• المؤشرات المؤيدة: EMA20 أسفل EMA50 ، شريط MACD سالب.\n");
-            sb.append("• النصحية: دخول بيع مع الالتزام بوقف الخسارة عند $").append(String.format(Locale.US, "%.2f", res.stopLoss)).append(".");
-        } else if (res.signal.contains("NO TRADE")) {
-            sb.append("• السبب: تقلب حاد في الأسواق أو تعادل القوى بين الشراء والبيع.\n");
-            sb.append("• النصحية: يُمنع التداول حاليًا للحفاظ على رأس المال ومنع المخاطرة في ظروف غير مواتية.");
-        } else {
-            sb.append("• السبب: عدم اكتمال شروط الاستراتيجية (تداخل المتوسطات أو RSI متحيّد).\n");
-            sb.append("• النصحية: يُفضل الانتظار حتى تتضح إشارة التداول القادمة بشكل أدق.");
-        }
-        return sb.toString();
-    }
-
-    // Mathematical Indicator Helpers
-    double calcRSI(List<Bar> bars, int period, int end) {
-        if (end < period) return 50.0;
-        double gain = 0, loss = 0;
-        for (int i = end - period + 1; i <= end; i++) {
-            double diff = bars.get(i).c - bars.get(i - 1).c;
-            if (diff >= 0) gain += diff;
-            else loss -= diff;
-        }
-        if (loss == 0) return 100.0;
-        double rs = gain / loss;
-        return 100.0 - (100.0 / (1.0 + rs));
-    }
-
-    double calcEMA(List<Bar> bars, int period, int end) {
-        if (end < 0) return 0;
-        int start = Math.max(0, end - (period * 3));
-        double k = 2.0 / (period + 1);
-        double ema = bars.get(start).c;
-        for (int i = start + 1; i <= end; i++) {
-            ema = (bars.get(i).c * k) + (ema * (1 - k));
-        }
-        return ema;
-    }
-
-    double calcATR(List<Bar> bars, int period, int end) {
-        if (end < 1) return 1.0;
-        int start = Math.max(1, end - period + 1);
-        double trSum = 0;
-        for (int i = start; i <= end; i++) {
-            Bar cur = bars.get(i);
-            double prevClose = bars.get(i - 1).c;
-            double tr = Math.max(cur.h - cur.l, Math.max(Math.abs(cur.h - prevClose), Math.abs(cur.l - prevClose)));
-            trSum += tr;
-        }
-        return trSum / Math.max(1, end - start + 1);
-    }
-
-    double calcMACDHist(List<Bar> bars, int end) {
-        if (end < 26) return 0.0;
-        List<Double> macdSeries = new ArrayList<>();
-        int startIdx = Math.max(26, end - 30);
-        for (int i = startIdx; i <= end; i++) {
-            double ema12 = calcEMA(bars, 12, i);
-            double ema26 = calcEMA(bars, 26, i);
-            macdSeries.add(ema12 - ema26);
-        }
-
-        double macdLine = macdSeries.get(macdSeries.size() - 1);
-
-        // Calculate 9-period EMA of MACD series as Signal Line
-        double k = 2.0 / (9 + 1);
-        double signalLine = macdSeries.get(0);
-        for (int i = 1; i < macdSeries.size(); i++) {
-            signalLine = (macdSeries.get(i) * k) + (signalLine * (1 - k));
-        }
-        return macdLine - signalLine;
-    }
-
-    // --- BACKTESTING ENGINE ---
-    static class BacktestResult {
-        int totalTrades;
-        double winRate, lossRate;
-        double grossProfit, grossLoss, profitFactor, maxDrawdown;
-        double avgWin, avgLoss;
-        int longestLosingStreak;
-        double finalCapital;
-    }
-
-    BacktestResult runGoldBacktest(List<Bar> bars) {
-        BacktestResult bt = new BacktestResult();
-        double startCap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
-        double cash = startCap, peak = cash;
-        int wins = 0, losses = 0;
-        int currentLossStreak = 0, maxLossStreak = 0;
-
-        for (int i = 50; i < bars.size() - 1; i++) {
-            double rsi = calcRSI(bars, 14, i);
-            double ema20 = calcEMA(bars, 20, i);
-            double ema50 = calcEMA(bars, 50, i);
-            double macdHist = calcMACDHist(bars, i);
-            double atr = calcATR(bars, 14, i);
-            Bar bar = bars.get(i);
-
-            if (bar.c > ema50 && rsi >= 45 && rsi <= 68 && macdHist > 0 && ema20 > ema50) {
-                // Buy Trade Setup
-                bt.totalTrades++;
-                double entry = bar.c;
-                double sl = entry - (atr * 1.5);
-                double tp = entry + (atr * 2.0);
-
-                // Track Trade across subsequent bars
-                boolean closed = false;
-                for (int j = i + 1; j < bars.size(); j++) {
-                    Bar futureBar = bars.get(j);
-                    if (futureBar.h >= tp) {
-                        wins++;
-                        double pnl = atr * 2.0 * 10;
-                        cash += pnl;
-                        bt.grossProfit += pnl;
-                        currentLossStreak = 0;
-                        closed = true;
-                        i = j; // Advance index to trade closure bar
-                        break;
-                    } else if (futureBar.l <= sl) {
-                        losses++;
-                        double pnl = atr * 1.5 * 10;
-                        cash -= pnl;
-                        bt.grossLoss += pnl;
-                        currentLossStreak++;
-                        if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
-                        closed = true;
-                        i = j; // Advance index to trade closure bar
-                        break;
-                    }
-                }
-            }
-            peak = Math.max(peak, cash);
-            double dd = (peak - cash) / peak;
-            if (dd > bt.maxDrawdown) bt.maxDrawdown = dd;
-        }
-
-        bt.finalCapital = cash;
-        bt.winRate = bt.totalTrades > 0 ? (double) wins / bt.totalTrades : 0;
-        bt.lossRate = bt.totalTrades > 0 ? (double) losses / bt.totalTrades : 0;
-        bt.profitFactor = bt.grossLoss > 0 ? bt.grossProfit / bt.grossLoss : (bt.grossProfit > 0 ? 99.0 : 0);
-        bt.avgWin = wins > 0 ? bt.grossProfit / wins : 0;
-        bt.avgLoss = losses > 0 ? bt.grossLoss / losses : 0;
-        bt.longestLosingStreak = maxLossStreak;
-
-        return bt;
-    }
-
-    // --- TELEGRAM INTEGRATION ---
-    void sendTelegramAlertIfNeeded(AnalysisResult res) {
-        String token = prefs.getString(PREF_KEY_TELEGRAM_TOKEN, "").trim();
-        String chatId = prefs.getString(PREF_KEY_TELEGRAM_CHAT_ID, "").trim();
+    void sendTelegramAlertIfNeeded(GoldAnalysisEngine.AnalysisResult res) {
+        String token = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_TOKEN, "").trim();
+        String chatId = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_TELEGRAM_CHAT_ID, "").trim();
 
         if (token.isEmpty() || chatId.isEmpty()) return;
 
@@ -988,12 +648,7 @@ public class MainActivity extends Activity {
                         "TP1: $" + String.format(Locale.US, "%.2f", res.takeProfit1) + "\n\n" +
                         "السبب:\n" + res.arabicExplanation;
 
-                String urlStr = "https://api.telegram.org/bot" + token + "/sendMessage?chat_id=" + chatId +
-                        "&parse_mode=Markdown&text=" + URLEncoder.encode(msg, "UTF-8");
-
-                URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.getResponseCode(); // Execute request
+                TelegramNotifier.sendTelegramMessageAsync(token, chatId, msg, null);
             } catch (Exception e) {
                 e.printStackTrace();
             }
