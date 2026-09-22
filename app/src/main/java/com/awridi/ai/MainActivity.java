@@ -221,15 +221,33 @@ String[] keys = {
     }
 
     void switchTab(String tabKey) {
-        switch (tabKey) {
-            case "home": showHomeScreen(); break;
-            case "portfolio":
-            case "paper": showPortfolioScreen(); break;
-            case "backtest": showBacktestScreen(); break;
-            case "assistant": showAiAssistantScreen(); break;
-            case "settings": showSettingsScreen(); break;
-        }
+    switch (tabKey) {
+        case "home":
+            showHomeScreen();
+            break;
+
+        case "portfolio":
+        case "paper":
+            showPortfolioScreen();
+            break;
+
+        case "backtest":
+            showBacktestScreen();
+            break;
+
+        case "market_intelligence":
+            showMarketIntelligenceScreen();
+            break;
+
+        case "assistant":
+            showAiAssistantScreen();
+            break;
+
+        case "settings":
+            showSettingsScreen();
+            break;
     }
+}
 
     // --- SCREEN 1: HOME (GOLD XAU/USD ANALYSIS) ---
     void showHomeScreen() {
