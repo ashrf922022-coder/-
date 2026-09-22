@@ -836,7 +836,87 @@ String[] keys = {
                 runOnUiThread(() -> Toast.makeText(this, "خطأ في الاختبار: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         });
-    }
+    }// --- SCREEN 3.5: MARKET INTELLIGENCE ---
+void showMarketIntelligenceScreen() {
+    setupBaseLayout("market_intelligence");
+
+    LinearLayout card = createCardBox();
+
+    TextView title = createTextView(
+            "🧠 ذكاء السوق",
+            22,
+            Color.WHITE
+    );
+    card.addView(title);
+
+    TextView subtitle = createTextView(
+            "تحليل فني متقدم للسوق والاتجاه والسيولة",
+            14,
+            Color.LTGRAY
+    );
+    card.addView(subtitle);
+
+    TextView status = createTextView(
+            "اختر السوق والفاصل الزمني ثم ابدأ التحليل",
+            15,
+            Color.WHITE
+    );
+    card.addView(status);
+
+    EditText symbolInput = createEditText("رمز الأصل — مثال: XAU/USD");
+    card.addView(symbolInput);
+
+    EditText intervalInput = createEditText("الفاصل — مثال: 15min");
+    card.addView(intervalInput);
+
+    Button analyzeButton = createButton("🔍 تحليل السوق");
+
+    analyzeButton.setOnClickListener(v -> {
+        String symbol = symbolInput.getText().toString().trim();
+        String interval = intervalInput.getText().toString().trim();
+
+        if (symbol.isEmpty()) {
+            symbol = "XAU/USD";
+        }
+
+        if (interval.isEmpty()) {
+            interval = "15min";
+        }
+
+        status.setText(
+                "⏳ جارٍ تحليل " + symbol + " — " + interval + "..."
+        );
+
+        Toast.makeText(
+                MainActivity.this,
+                "سيتم تشغيل محرك ذكاء السوق",
+                Toast.LENGTH_SHORT
+        ).show();
+    });
+
+    card.addView(analyzeButton);
+
+    TextView indicators = createTextView(
+            "\n📊 المؤشرات\n" +
+            "• SMA 20 / 50\n" +
+            "• EMA 20 / 50 / 200\n" +
+            "• RSI 14\n" +
+            "• MACD Histogram\n" +
+            "• ATR 14\n" +
+            "• Bollinger Bands 20 / 2\n" +
+            "• Volume\n\n" +
+            "📍 الدعم والمقاومة\n" +
+            "📈 Breakout / Pullback\n" +
+            "🧩 الأنماط التاريخية\n" +
+            "🎯 Market Score 0–100",
+            15,
+            Color.WHITE
+    );
+
+    card.addView(indicators);
+
+    content.addView(card);
+}
 
     // --- SCREEN 4: AI ASSISTANT ---
     void showAiAssistantScreen() {
