@@ -186,9 +186,23 @@ public class MainActivity extends Activity {
         navBar.setPadding(8, 8, 8, 12);
         navBar.setBackgroundColor(surfaceColor);
         navBar.setGravity(Gravity.CENTER);
+String[] tabs = {
+        "الرئيسية",
+        "المحفظة",
+        "Backtest",
+        "🧠 ذكاء السوق",
+        "المساعد",
+        "الإعدادات"
+};
 
-        String[] tabs = {"الرئيسية", "المحفظة", "Backtest", "المساعد", "الإعدادات"};
-        String[] keys = {"home", "portfolio", "backtest", "assistant", "settings"};
+String[] keys = {
+        "home",
+        "portfolio",
+        "backtest",
+        "market_intelligence",
+        "assistant",
+        "settings"
+};
 
         for (int i = 0; i < tabs.length; i++) {
             final String tabKey = keys[i];
