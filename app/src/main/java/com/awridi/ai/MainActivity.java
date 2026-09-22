@@ -40,8 +40,9 @@ public class MainActivity extends Activity {
     EditText apiKeyInput, tgTokenInput, tgChatIdInput, capitalInput, riskPctInput, tvWebhookInput;
     TextView statusText;
 
-    // Current Analysis Result Cache
+    // Current Analysis & Intelligence Result Caches
     AnalysisResult currentAnalysis = null;
+    MarketIntelligenceResult currentIntelResult = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -187,8 +188,8 @@ public class MainActivity extends Activity {
         navBar.setBackgroundColor(surfaceColor);
         navBar.setGravity(Gravity.CENTER);
 
-        String[] tabs = {"الرئيسية", "المحفظة", "Backtest", "المساعد", "الإعدادات"};
-        String[] keys = {"home", "portfolio", "backtest", "assistant", "settings"};
+        String[] tabs = {"الرئيسية", "🧠 ذكاء السوق", "المحفظة", "Backtest", "الإعدادات"};
+        String[] keys = {"home", "intelligence", "portfolio", "backtest", "settings"};
 
         for (int i = 0; i < tabs.length; i++) {
             final String tabKey = keys[i];
@@ -209,6 +210,7 @@ public class MainActivity extends Activity {
     void switchTab(String tabKey) {
         switch (tabKey) {
             case "home": showHomeScreen(); break;
+            case "intelligence": showMarketIntelligenceScreen(); break;
             case "portfolio":
             case "paper": showPortfolioScreen(); break;
             case "backtest": showBacktestScreen(); break;
@@ -227,12 +229,20 @@ public class MainActivity extends Activity {
         content.addView(heroCard);
 
         LinearLayout actionCard = createCardBox();
-        actionCard.addView(createTextView("⚡ تحليل الذهب الآن", 16, true));
+        actionCard.addView(createTextView("⚡ تحليل وذكاء سوق الذهب (XAU/USD)", 16, true));
 
         Button analyzeBtn = createButton("🔍 بدء تحليل XAU/USD", v -> runGoldAnalysis());
-        actionCard.addView(analyzeBtn);
+        Button intelBtn = createButton("🧠 ذكاء السوق (Market Intelligence)", v -> showMarketIntelligenceScreen());
+        Button histBtn = createSecondaryButton("📚 التحليل التاريخي المتقدم", v -> showMarketIntelligenceScreen());
 
-        statusText = createTextView("جاهز للتحليل. انقر على الزر أعلاه.", 13, false);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-1, -2);
+        btnLp.setMargins(0, 6, 0, 6);
+
+        actionCard.addView(analyzeBtn, btnLp);
+        actionCard.addView(intelBtn, btnLp);
+        actionCard.addView(histBtn, btnLp);
+
+        statusText = createTextView("جاهز للتحليل. انقر على أحد الأزرار أعلاه.", 13, false);
         statusText.setTextColor(mutedColor);
         actionCard.addView(statusText);
         content.addView(actionCard);
@@ -361,6 +371,151 @@ public class MainActivity extends Activity {
         warningCard.addView(createTextView("⚠️ تحذير هام من المخاطر", 15, true));
         warningCard.addView(createTextView("سوق الذهب يتسم بالتقلب العالي. هذه الإشارات والمعلومات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.", 13, false));
         content.addView(warningCard);
+    }
+
+    // --- SCREEN: MARKET INTELLIGENCE & HISTORICAL ANALYSIS ---
+    void showMarketIntelligenceScreen() {
+        setupBaseLayout("intelligence");
+
+        LinearLayout titleCard = createCardBox();
+        titleCard.addView(createTextView("🧠 Market Intelligence — ذكاء السوق والتحليل التاريخي", 20, true));
+        titleCard.addView(createTextView("محرك تحليل متخصص حصريًا في الذهب (XAU/USD) يعتمد على نماذج الشبه التاريخية والتقييم الديناميكي المتعدد العوامل.", 13, false));
+
+        Button runIntelBtn = createButton("🚀 تشغيل تحليل ذكاء السوق التاريخي لـ XAU/USD", v -> runMarketIntelligenceAnalysis());
+        titleCard.addView(runIntelBtn);
+        content.addView(titleCard);
+
+        if (currentIntelResult != null) {
+            displayMarketIntelligenceResult(currentIntelResult);
+        } else {
+            LinearLayout infoCard = createCardBox();
+            infoCard.addView(createTextView("💡 حول هذا المحرك:", 15, true));
+            infoCard.addView(createTextView("• يستخدم بيانات Twelve Data الحقيقية للذهب فقط دون بيانات وهمية.", 13, false));
+            infoCard.addView(createTextView("• يقوم بمقارنة الشبه الرياضي بين النمط الحالي والأنماط التاريخية السابقة.", 13, false));
+            infoCard.addView(createTextView("• يحسب درجات الذكاء (Intelligence Score) ديناميكيًا من الاتجاه، الزخم، التقلب، والنتائج التاريخية الفعلية.", 13, false));
+            content.addView(infoCard);
+        }
+    }
+
+    void runMarketIntelligenceAnalysis() {
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
+        if (apiKey.isEmpty()) {
+            Toast.makeText(this, "يرجى إدخال مفتاح Twelve Data API في شاشة الإعدادات أولًا.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Toast.makeText(this, "🔄 جاري جلب وتحليل البيانات التاريخية للذهب...", Toast.LENGTH_SHORT).show();
+
+        executor.submit(() -> {
+            try {
+                Map<String, List<Bar>> mtfBars = new HashMap<>();
+                String[] intervals = {"15min", "1h", "4h"};
+                for (String tf : intervals) {
+                    List<Bar> bars = fetchTwelveData(GOLD_SYMBOL, tf, apiKey, 200);
+                    if (bars != null && !bars.isEmpty()) {
+                        mtfBars.put(tf, bars);
+                    }
+                }
+
+                if (!mtfBars.containsKey("15min") && !mtfBars.containsKey("1h")) {
+                    throw new Exception("تعذر جلب البيانات من Twelve Data. تأكد من صحة المفتاح.");
+                }
+
+                MarketIntelligenceResult intelRes = MarketIntelligenceEngine.analyze(mtfBars);
+                currentIntelResult = intelRes;
+
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "✅ اكتمل تحليل ذكاء السوق بنجاح!", Toast.LENGTH_SHORT).show();
+                    showMarketIntelligenceScreen();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "❌ خطأ: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    void displayMarketIntelligenceResult(MarketIntelligenceResult res) {
+        // Price & Overview Card
+        LinearLayout overviewCard = createCardBox();
+        TextView symbolTv = createTextView("🏆 الرمز: " + GOLD_SYMBOL, 18, true);
+        symbolTv.setTextIsSelectable(true);
+        overviewCard.addView(symbolTv);
+
+        TextView priceTv = createTextView("السعر الحالي: $" + String.format(Locale.US, "%.2f", res.currentPrice), 24, true);
+        priceTv.setTextColor(primaryColor);
+        priceTv.setTextIsSelectable(true);
+        overviewCard.addView(priceTv);
+
+        TextView biasTv = createTextView("MARKET BIAS: " + res.marketBias, 16, true);
+        biasTv.setTextIsSelectable(true);
+        overviewCard.addView(biasTv);
+
+        TextView regimeTv = createTextView("Market Regime: " + res.marketRegime, 15, true);
+        regimeTv.setTextIsSelectable(true);
+        overviewCard.addView(regimeTv);
+
+        content.addView(overviewCard);
+
+        // Score Card
+        LinearLayout scoreCard = createCardBox();
+        scoreCard.addView(createTextView("📊 Intelligence Score (درجة ذكاء السوق المحسوبة)", 16, true));
+
+        TextView scoreTv = createTextView(String.format(Locale.US, "%.1f / 100", res.intelligenceScore), 28, true);
+        scoreTv.setTextColor(secondaryColor);
+        scoreTv.setTextIsSelectable(true);
+        scoreCard.addView(scoreTv);
+
+        TextView signalTv = createTextView("القرار النهائي (Final State): " + res.finalSignal, 18, true);
+        if (res.finalSignal.contains("BUY")) signalTv.setTextColor(Color.GREEN);
+        else if (res.finalSignal.contains("SELL")) signalTv.setTextColor(Color.RED);
+        else signalTv.setTextColor(Color.YELLOW);
+        signalTv.setTextIsSelectable(true);
+        scoreCard.addView(signalTv);
+
+        TextView riskTv = createTextView("مستوى المخاطرة (Risk Level): " + res.riskLevel, 14, true);
+        riskTv.setTextIsSelectable(true);
+        scoreCard.addView(riskTv);
+
+        content.addView(scoreCard);
+
+        // Technical Context
+        LinearLayout techCard = createCardBox();
+        techCard.addView(createTextView("🔍 حالة السوق الفنية الحالية", 16, true));
+
+        TextView trendTv = createTextView("• الاتجاه: " + res.trend, 14, false); trendTv.setTextIsSelectable(true); techCard.addView(trendTv);
+        TextView momTv = createTextView("• الزخم: " + res.momentum, 14, false); momTv.setTextIsSelectable(true); techCard.addView(momTv);
+        TextView volTv = createTextView("• التذبذب والتقلب: " + res.volatility, 14, false); volTv.setTextIsSelectable(true); techCard.addView(volTv);
+        TextView htfTv = createTextView("• الإطار الأكبر: " + res.htfStatus, 14, false); htfTv.setTextIsSelectable(true); techCard.addView(htfTv);
+
+        content.addView(techCard);
+
+        // Historical Similarity & Stats Card
+        LinearLayout histCard = createCardBox();
+        histCard.addView(createTextView("📚 Historical Pattern Analysis (التحليل التاريخي المقارن)", 16, true));
+
+        TextView simTv = createTextView("• Historical Similarity: " + String.format(Locale.US, "%.1f%%", res.similarityScore), 14, true); simTv.setTextIsSelectable(true); histCard.addView(simTv);
+        TextView bullTv = createTextView("• Historical Bullish %: " + String.format(Locale.US, "%.1f%%", res.bullishPct), 14, true); bullTv.setTextColor(Color.GREEN); bullTv.setTextIsSelectable(true); histCard.addView(bullTv);
+        TextView bearTv = createTextView("• Historical Bearish %: " + String.format(Locale.US, "%.1f%%", res.bearishPct), 14, true); bearTv.setTextColor(Color.RED); bearTv.setTextIsSelectable(true); histCard.addView(bearTv);
+        TextView moveTv = createTextView("• Average Forward Move: $" + String.format(Locale.US, "%.2f", res.avgForwardMove), 14, false); moveTv.setTextIsSelectable(true); histCard.addView(moveTv);
+        TextView countTv = createTextView("• Historical Sample Count: " + res.sampleCount + " حالة تاريخية مطابقة", 14, false); countTv.setTextIsSelectable(true); histCard.addView(countTv);
+
+        content.addView(histCard);
+
+        // News Sentiment Status Card
+        LinearLayout sentCard = createCardBox();
+        sentCard.addView(createTextView("📰 تحليل معنويات الأخبار (Market Sentiment)", 16, true));
+        TextView sentTv = createTextView("• حالة التحليل: " + res.sentimentStatus, 13, false);
+        sentTv.setTextIsSelectable(true);
+        sentCard.addView(sentTv);
+        content.addView(sentCard);
+
+        // Arabic Explanation
+        LinearLayout expCard = createCardBox();
+        expCard.addView(createTextView("📖 التفسير والتقرير العربي الشامل", 16, true));
+        TextView expTv = createTextView(res.arabicExplanation, 14, false);
+        expTv.setTextIsSelectable(true);
+        expCard.addView(expTv);
+        content.addView(expCard);
     }
 
     // --- SCREEN 2: PORTFOLIO & CAPITAL MANAGEMENT ---
