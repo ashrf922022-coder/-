@@ -32,7 +32,6 @@ public class MainActivity extends Activity {
     public static final String PREF_KEY_CAPITAL = "account_capital";
     public static final String PREF_KEY_RISK_PCT = "risk_percentage";
     public static final String PREF_KEY_PAPER_TRADES = "paper_trades_json";
-    public static final String PREF_KEY_ANALYSIS_HISTORY = "analysis_history_json";
 
     // Symbol strictly set to XAU/USD
     public static final String GOLD_SYMBOL = "XAU/USD";
@@ -44,6 +43,9 @@ public class MainActivity extends Activity {
     // Current Analysis & Intelligence Result Caches
     AnalysisResult currentAnalysis = null;
     MarketIntelligenceResult currentIntelResult = null;
+    String selectedSymbol = GOLD_SYMBOL;
+    String selectedTimeframe = "15m";
+    int selectedCandleCount = 150;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -189,13 +191,13 @@ public class MainActivity extends Activity {
         navBar.setBackgroundColor(surfaceColor);
         navBar.setGravity(Gravity.CENTER);
 
-        String[] tabs = {"الرئيسية", "🧠 ذكاء السوق", "المحفظة", "Backtest", "الإعدادات"};
-        String[] keys = {"home", "intelligence", "portfolio", "backtest", "settings"};
+        String[] tabs = {"الرئيسية", "🧠 ذكاء السوق", "التداول التجريبي", "Backtest", "المساعد", "الإعدادات"};
+        String[] keys = {"home", "intelligence", "paper", "backtest", "assistant", "settings"};
 
         for (int i = 0; i < tabs.length; i++) {
             final String tabKey = keys[i];
             Button b;
-            if (tabKey.equals(activeTab) || (activeTab.equals("paper") && tabKey.equals("portfolio"))) {
+            if (tabKey.equals(activeTab)) {
                 b = createButton(tabs[i], v -> switchTab(tabKey));
             } else {
                 b = createSecondaryButton(tabs[i], v -> switchTab(tabKey));
@@ -212,8 +214,7 @@ public class MainActivity extends Activity {
         switch (tabKey) {
             case "home": showHomeScreen(); break;
             case "intelligence": showMarketIntelligenceScreen(); break;
-            case "portfolio":
-            case "paper": showPortfolioScreen(); break;
+            case "paper": showPaperTradingScreen(); break;
             case "backtest": showBacktestScreen(); break;
             case "assistant": showAiAssistantScreen(); break;
             case "settings": showSettingsScreen(); break;
@@ -234,14 +235,12 @@ public class MainActivity extends Activity {
 
         Button analyzeBtn = createButton("🔍 بدء تحليل XAU/USD", v -> runGoldAnalysis());
         Button intelBtn = createButton("🧠 ذكاء السوق (Market Intelligence)", v -> showMarketIntelligenceScreen());
-        Button histBtn = createSecondaryButton("📚 التحليل التاريخي المتقدم", v -> showMarketIntelligenceScreen());
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-1, -2);
         btnLp.setMargins(0, 6, 0, 6);
 
         actionCard.addView(analyzeBtn, btnLp);
         actionCard.addView(intelBtn, btnLp);
-        actionCard.addView(histBtn, btnLp);
 
         statusText = createTextView("جاهز للتحليل. انقر على أحد الأزرار أعلاه.", 13, false);
         statusText.setTextColor(mutedColor);
@@ -374,12 +373,7 @@ public class MainActivity extends Activity {
         content.addView(warningCard);
     }
 
-    // Selected options for Market Intelligence Screen
-    String selectedSymbol = GOLD_SYMBOL;
-    String selectedTimeframe = "15m";
-    int selectedCandleCount = 150;
-
-    // --- SCREEN: MARKET INTELLIGENCE & HISTORICAL ANALYSIS ---
+    // --- SCREEN: MARKET INTELLIGENCE ---
     void showMarketIntelligenceScreen() {
         setupBaseLayout("intelligence");
 
@@ -389,7 +383,7 @@ public class MainActivity extends Activity {
 
         // Controls Card: Symbol, Timeframe, Candle count
         LinearLayout filterCard = createCardBox();
-        filterCard.addView(createTextView("⚙️ خيارات التحليل التاريخي والسوقي:", 15, true));
+        filterCard.addView(createTextView("⚙️ خيارات التحليل والأنماط:", 15, true));
 
         filterCard.addView(createTextView("الأصل المالي: " + GOLD_SYMBOL, 13, true));
 
@@ -419,7 +413,7 @@ public class MainActivity extends Activity {
         }
         filterCard.addView(countLayout);
 
-        Button runIntelBtn = createButton("🚀 بدء تحليل ذكاء السوق الآن", v -> runMarketIntelligenceAnalysis());
+        Button runIntelBtn = createButton("🔍 تحليل السوق", v -> runMarketIntelligenceAnalysis());
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-1, -2);
         btnLp.setMargins(0, 10, 0, 0);
         filterCard.addView(runIntelBtn, btnLp);
@@ -433,12 +427,8 @@ public class MainActivity extends Activity {
             infoCard.addView(createTextView("💡 حول هذا المحرك الذكي:", 15, true));
             infoCard.addView(createTextView("• يستخدم طبقة بيانات Twelve Data الحقيقية للذهب.", 13, false));
             infoCard.addView(createTextView("• يحسب درجات الحسابات الفنية والأنماط التاريخية دون قيم وهمية.", 13, false));
-            infoCard.addView(createTextView("• يحفظ سجل أحدث التحليلات لإمكانية الرجوع إليها.", 13, false));
             content.addView(infoCard);
         }
-
-        // Section: Analysis History Log Card
-        displayAnalysisHistoryLogCard();
     }
 
     void runMarketIntelligenceAnalysis() {
@@ -448,7 +438,7 @@ public class MainActivity extends Activity {
             return;
         }
 
-        Toast.makeText(this, "🔄 جاري سحب وتحليل البيانات التاريخية المتقدمة...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🔄 جاري سحب وتحليل البيانات المتقدمة...", Toast.LENGTH_SHORT).show();
 
         executor.submit(() -> {
             try {
@@ -469,9 +459,6 @@ public class MainActivity extends Activity {
 
                 MarketIntelligenceResult intelRes = MarketIntelligenceEngine.analyze(mtfBars, selectedSymbol, selectedTimeframe, selectedCandleCount);
                 currentIntelResult = intelRes;
-
-                // Save to Recent Analysis History Log
-                saveToAnalysisHistoryLog(intelRes);
 
                 runOnUiThread(() -> {
                     Toast.makeText(this, "✅ اكتمل تحليل ذكاء السوق بنجاح!", Toast.LENGTH_SHORT).show();
@@ -546,32 +533,20 @@ public class MainActivity extends Activity {
 
         content.addView(srCard);
 
-        // 5. Historical Pattern & Period Statistics Card
+        // 5. Pattern Statistics Card
         LinearLayout patternCard = createCardBox();
-        patternCard.addView(createTextView("📚 الأنماط والإحصائيات التاريخية (Pattern & Statistics)", 16, true));
+        patternCard.addView(createTextView("📚 الأنماط والإحصائيات (Pattern & Statistics)", 16, true));
 
-        TextView patTv = createTextView("• النمط التاريخي المكتشف: " + res.patternType, 14, true); patTv.setTextIsSelectable(true); patternCard.addView(patTv);
+        TextView patTv = createTextView("• النمط المكتشف: " + res.patternType, 14, true); patTv.setTextIsSelectable(true); patternCard.addView(patTv);
         TextView patRatTv = createTextView("  السبب: " + res.patternRationale, 12, false); patRatTv.setTextIsSelectable(true); patternCard.addView(patRatTv);
 
         TextView periodStatsTv = createTextView("• إحصائيات الفترة (" + res.candleCount + " شمعة):\n  أعلى سعر: $" + String.format(Locale.US, "%.2f", res.periodHigh) + " | أدنى سعر: $" + String.format(Locale.US, "%.2f", res.periodLow) + "\n  نسبة التغير: " + String.format(Locale.US, "%+.2f%%", res.periodChangePct) + " | نطاق حركة السعر: $" + String.format(Locale.US, "%.2f", res.periodVolatilityUsd), 13, false);
         periodStatsTv.setTextIsSelectable(true);
         patternCard.addView(periodStatsTv);
 
-        TextView matchTv = createTextView("• تحليل الشبه: مطابقة " + res.sampleCount + " حالة بنسبة تطابق " + String.format(Locale.US, "%.1f%%", res.similarityScore) + "\n  احتمال الصعود التاريخي: " + String.format(Locale.US, "%.1f%%", res.bullishPct) + " | الهبوط: " + String.format(Locale.US, "%.1f%%", res.bearishPct) + "\n  متوسط الحركة المستقبلية: $" + String.format(Locale.US, "%.2f", res.avgForwardMove), 13, false);
-        matchTv.setTextIsSelectable(true);
-        patternCard.addView(matchTv);
-
         content.addView(patternCard);
 
-        // 6. News Sentiment Status Card
-        LinearLayout sentCard = createCardBox();
-        sentCard.addView(createTextView("📰 تحليل الأخبار والمعنويات (News Sentiment)", 16, true));
-        TextView sentTv = createTextView("• " + res.sentimentStatus, 13, false);
-        sentTv.setTextIsSelectable(true);
-        sentCard.addView(sentTv);
-        content.addView(sentCard);
-
-        // 7. Arabic Explanation
+        // 6. Arabic Explanation
         LinearLayout expCard = createCardBox();
         expCard.addView(createTextView("📖 الشرح التقريري العربي الشامل", 16, true));
         TextView expTv = createTextView(res.arabicExplanation, 14, false);
@@ -580,438 +555,151 @@ public class MainActivity extends Activity {
         content.addView(expCard);
     }
 
-    void saveToAnalysisHistoryLog(MarketIntelligenceResult res) {
-        try {
-            String jsonStr = prefs.getString(PREF_KEY_ANALYSIS_HISTORY, "[]");
-            JSONArray arr = new JSONArray(jsonStr);
-
-            JSONObject obj = new JSONObject();
-            obj.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date()));
-            obj.put("symbol", res.symbol);
-            obj.put("timeframe", res.timeframe);
-            obj.put("price", res.currentPrice);
-            obj.put("score", res.intelligenceScore);
-            obj.put("signal", res.finalSignal);
-            obj.put("regime", res.marketRegime);
-
-            arr.put(obj);
-            prefs.edit().putString(PREF_KEY_ANALYSIS_HISTORY, arr.toString()).apply();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    void displayAnalysisHistoryLogCard() {
-        LinearLayout histCard = createCardBox();
-        histCard.addView(createTextView("📜 سجل أحدث التحليلات المنفذة (Recent Analysis Log)", 16, true));
-
-        try {
-            String jsonStr = prefs.getString(PREF_KEY_ANALYSIS_HISTORY, "[]");
-            JSONArray arr = new JSONArray(jsonStr);
-
-            if (arr.length() == 0) {
-                histCard.addView(createTextView("لا يوجد سجل تحليلات سابقة بعد.", 13, false));
-            } else {
-                for (int i = arr.length() - 1; i >= Math.max(0, arr.length() - 5); i--) {
-                    JSONObject obj = arr.getJSONObject(i);
-                    LinearLayout item = createCardBox();
-                    TextView tv = createTextView("⏱️ " + obj.optString("date") + " | " + obj.optString("symbol") + " (" + obj.optString("timeframe") + ")\n" +
-                            "السعر: $" + String.format(Locale.US, "%.2f", obj.optDouble("price")) + " | القرار: " + obj.optString("signal") + " | Score: " + String.format(Locale.US, "%.1f", obj.optDouble("score")), 13, false);
-                    tv.setTextIsSelectable(true);
-                    item.addView(tv);
-                    histCard.addView(item);
-                }
-            }
-        } catch (Exception e) {
-            histCard.addView(createTextView("تعذر تحميل السجل", 12, false));
-        }
-
-        content.addView(histCard);
-    }
-
-    // --- SCREEN 2: PORTFOLIO & CAPITAL MANAGEMENT ---
+    // --- SCREEN 2: PAPER TRADING ---
     void showPaperTradingScreen() {
-        showPortfolioScreen();
-    }
+        setupBaseLayout("paper");
 
-    void showPortfolioScreen() {
-        setupBaseLayout("portfolio");
-
-        PortfolioManager.PortfolioSummary sum = PortfolioManager.calculateSummary(prefs);
-
-        // Header Title Card
         LinearLayout titleCard = createCardBox();
-        titleCard.addView(createTextView("💼 المحفظة — إدارة رأس المال وسجل الصفقات", 20, true));
-        titleCard.addView(createTextView("نظام إدارة محفظة الذهب (XAU/USD)، المخاطر والتحليلات الإحصائية الشاملة.", 13, false));
+        titleCard.addView(createTextView("📝 حساب التداول التجريبي (Paper Trading)", 20, true));
+        titleCard.addView(createTextView("اختبر مهاراتك دون المخاطرة بأي أموال حقيقية.", 13, false));
         content.addView(titleCard);
 
-        // Daily Risk Warning Banner (if daily loss exceeded)
-        if (sum.isDailyLossExceeded) {
-            LinearLayout warnCard = createCardBox();
-            GradientDrawable wGd = new GradientDrawable();
-            wGd.setColor(Color.parseColor("#3A1319"));
-            wGd.setCornerRadius(16);
-            wGd.setStroke(2, Color.RED);
-            warnCard.setBackground(wGd);
-            warnCard.addView(createTextView("⚠️ تحذير إدارة المخاطر اليومية!", 16, true));
-            TextView warnTv = createTextView("لقد تجاوزت الخسارة اليومية الحالية (" + String.format(Locale.US, "%.1f%%", sum.todayLossPct) + ") الحد الأقصى المسموح به (" + prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0") + "%). يُنصح بالتوقف عن التداول اليوم لحماية رأس المال.", 13, false);
-            warnTv.setTextColor(Color.parseColor("#FF6B6B"));
-            warnCard.addView(warnTv);
-            content.addView(warnCard);
-        }
+        List<PaperTrade> trades = loadPaperTrades();
+        double initialCap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+        double totalPnl = 0;
+        int winCount = 0;
+        int closedCount = 0;
 
-        // 1. Portfolio Dashboard Card
-        LinearLayout dashCard = createCardBox();
-        dashCard.addView(createTextView("📊 1. لوحة المحفظة (Portfolio Dashboard)", 16, true));
-
-        LinearLayout row1 = new LinearLayout(this);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        TextView capTv = createTextView("• رأس المال الأساسي:\n$" + String.format(Locale.US, "%.2f", sum.baseCapital), 13, true);
-        TextView balTv = createTextView("• الرصيد الحالي:\n$" + String.format(Locale.US, "%.2f", sum.currentBalance), 13, true);
-        balTv.setTextColor(primaryColor);
-        row1.addView(capTv, new LinearLayout.LayoutParams(0, -2, 1));
-        row1.addView(balTv, new LinearLayout.LayoutParams(0, -2, 1));
-        dashCard.addView(row1);
-
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        TextView availTv = createTextView("• الرصيد المتاح:\n$" + String.format(Locale.US, "%.2f", sum.availableBalance), 13, false);
-        TextView pnlTv = createTextView("• إجمالي P/L:\n$" + String.format(Locale.US, "%+.2f", sum.totalPnl), 13, true);
-        pnlTv.setTextColor(sum.totalPnl >= 0 ? Color.GREEN : Color.RED);
-        row2.addView(availTv, new LinearLayout.LayoutParams(0, -2, 1));
-        row2.addView(pnlTv, new LinearLayout.LayoutParams(0, -2, 1));
-        dashCard.addView(row2);
-
-        LinearLayout row3 = new LinearLayout(this);
-        row3.setOrientation(LinearLayout.HORIZONTAL);
-        TextView retTv = createTextView("• نسبة العائد:\n" + String.format(Locale.US, "%+.2f%%", sum.returnPct), 13, true);
-        retTv.setTextColor(sum.returnPct >= 0 ? Color.GREEN : Color.RED);
-        TextView tradesCntTv = createTextView("• عدد الصفقات المغلقة:\n" + sum.totalTrades + " (المفتوحة: " + sum.openTradesCount + ")", 13, false);
-        row3.addView(retTv, new LinearLayout.LayoutParams(0, -2, 1));
-        row3.addView(tradesCntTv, new LinearLayout.LayoutParams(0, -2, 1));
-        dashCard.addView(row3);
-
-        content.addView(dashCard);
-
-        // 2. Capital Management Card
-        LinearLayout capMgmtCard = createCardBox();
-        capMgmtCard.addView(createTextView("⚙️ 2. إدارة رأس المال والمخاطر (Capital Management)", 16, true));
-
-        capMgmtCard.addView(createTextView("رأس المال الأساسي ($):", 13, true));
-        EditText baseCapEd = createEditText("رأس المال...", String.format(Locale.US, "%.2f", sum.baseCapital));
-        capMgmtCard.addView(baseCapEd);
-
-        capMgmtCard.addView(createTextView("نسبة المخاطرة لكل صفقة (Risk per Trade %):", 13, true));
-        EditText riskPctEd = createEditText("1.0", prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
-        capMgmtCard.addView(riskPctEd);
-
-        capMgmtCard.addView(createTextView("الحد الأقصى الخسارة اليومية (Max Daily Loss %):", 13, true));
-        EditText maxDailyLossEd = createEditText("3.0", prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0"));
-        capMgmtCard.addView(maxDailyLossEd);
-
-        // Dynamic Lot & Risk Calc Preview
-        double riskPctVal = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
-        double riskDollars = sum.baseCapital * (riskPctVal / 100.0);
-        capMgmtCard.addView(createTextView("• مبلغ المخاطرة المحسوب بالدولار للصفقة: $" + String.format(Locale.US, "%.2f", riskDollars), 13, true));
-
-        Button updateCapBtn = createButton("💾 تحديث إعدادات رأس المال والمخاطر", v -> {
-            try {
-                double newCap = Double.parseDouble(baseCapEd.getText().toString().trim());
-                double newRisk = Double.parseDouble(riskPctEd.getText().toString().trim());
-                double newDailyLoss = Double.parseDouble(maxDailyLossEd.getText().toString().trim());
-
-                PortfolioManager.updateCapitalSettings(prefs, newCap, newRisk, newDailyLoss);
-                Toast.makeText(this, "تم تحديث إعدادات المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
-                showPortfolioScreen();
-            } catch (Exception e) {
-                Toast.makeText(this, "يرجى إدخال أرقام صالحة", Toast.LENGTH_SHORT).show();
-            }
-        });
-        capMgmtCard.addView(updateCapBtn);
-
-        // Deposit & Withdraw Quick Actions
-        LinearLayout capActionBtns = new LinearLayout(this);
-        capActionBtns.setOrientation(LinearLayout.HORIZONTAL);
-        capActionBtns.setPadding(0, 10, 0, 0);
-
-        Button depBtn = createSecondaryButton("➕ إيداع رأس مال", v -> showDepositDialog());
-        Button drawBtn = createSecondaryButton("➖ سحب رأس مال", v -> showWithdrawDialog());
-        capActionBtns.addView(depBtn, new LinearLayout.LayoutParams(0, -2, 1));
-        capActionBtns.addView(drawBtn, new LinearLayout.LayoutParams(0, -2, 1));
-        capMgmtCard.addView(capActionBtns);
-
-        content.addView(capMgmtCard);
-
-        // Load All Trades
-        List<PortfolioManager.PortfolioTrade> allTrades = PortfolioManager.loadTrades(prefs);
-        List<PortfolioManager.PortfolioTrade> openTrades = new ArrayList<>();
-        List<PortfolioManager.PortfolioTrade> closedTrades = new ArrayList<>();
-
-        for (PortfolioManager.PortfolioTrade t : allTrades) {
-            if ("OPEN".equals(t.status)) openTrades.add(t);
-            else closedTrades.add(t);
-        }
-
-        // 3. Open Trades Section
-        LinearLayout openTradesCard = createCardBox();
-        openTradesCard.addView(createTextView("🔓 3. الصفقات المفتوحة (Open Trades)", 16, true));
-
-        if (openTrades.isEmpty()) {
-            openTradesCard.addView(createTextView("لا توجد صفقات مفتوحة حاليًا.", 13, false));
-        } else {
-            for (PortfolioManager.PortfolioTrade ot : openTrades) {
-                LinearLayout item = createCardBox();
-                item.addView(createTextView("📌 " + ot.type + " " + ot.symbol + " | Lot: " + String.format(Locale.US, "%.2f", ot.lotSize), 15, true));
-                item.addView(createTextView("وقت الفتح: " + ot.date + " | الدخول: $" + String.format(Locale.US, "%.2f", ot.entryPrice), 13, false));
-                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", ot.stopLoss) + " | TP1: $" + String.format(Locale.US, "%.2f", ot.tp1) + " | TP2: $" + String.format(Locale.US, "%.2f", ot.tp2), 13, false));
-                item.addView(createTextView("المخاطرة: $" + String.format(Locale.US, "%.2f", ot.riskAmount) + " | R:R: 1:" + String.format(Locale.US, "%.2f", ot.rrRatio), 13, false));
-
-                LinearLayout btns = new LinearLayout(this);
-                btns.setOrientation(LinearLayout.HORIZONTAL);
-
-                Button closeWin = createButton("إغلاق +TP", v -> {
-                    PortfolioManager.closeTrade(prefs, ot, true, 0.0);
-                    Toast.makeText(this, "تم إغلاق الصفقة على ربح!", Toast.LENGTH_SHORT).show();
-                    showPortfolioScreen();
-                });
-
-                Button closeLoss = createSecondaryButton("إغلاق -SL", v -> {
-                    PortfolioManager.closeTrade(prefs, ot, false, 0.0);
-                    Toast.makeText(this, "تم إغلاق الصفقة على خسارة!", Toast.LENGTH_SHORT).show();
-                    showPortfolioScreen();
-                });
-
-                Button detailBtn = createSecondaryButton("🔍 التفاصيل", v -> showTradeDetailModal(ot));
-
-                btns.addView(closeWin, new LinearLayout.LayoutParams(0, -2, 1));
-                btns.addView(closeLoss, new LinearLayout.LayoutParams(0, -2, 1));
-                btns.addView(detailBtn, new LinearLayout.LayoutParams(0, -2, 1));
-                item.addView(btns);
-
-                openTradesCard.addView(item);
+        for (PaperTrade t : trades) {
+            if (!t.status.equals("OPEN")) {
+                totalPnl += t.pnl;
+                closedCount++;
+                if (t.pnl > 0) winCount++;
             }
         }
-        content.addView(openTradesCard);
 
-        // 4. Trade History Section
+        LinearLayout statCard = createCardBox();
+        statCard.addView(createTextView("📊 ملخص الأداء التجريبي", 16, true));
+        statCard.addView(createTextView("• رأس المال الأولي: $" + String.format(Locale.US, "%.2f", initialCap), 14, false));
+        statCard.addView(createTextView("• الرصيد الحالي: $" + String.format(Locale.US, "%.2f", initialCap + totalPnl), 14, true));
+        statCard.addView(createTextView("• إجمالي الربح/الخسارة: $" + String.format(Locale.US, "%.2f", totalPnl), 14, true));
+        if (closedCount > 0) {
+            double winRate = (double) winCount / closedCount * 100.0;
+            statCard.addView(createTextView("• نسبة الصفحات الرابحة: " + String.format(Locale.US, "%.1f%%", winRate), 14, false));
+        }
+        content.addView(statCard);
+
         LinearLayout historyCard = createCardBox();
-        historyCard.addView(createTextView("📜 4. سجل الصفقات المغلقة (Trade History)", 16, true));
+        historyCard.addView(createTextView("📜 سجل الصفقات التجريبية", 16, true));
 
-        if (closedTrades.isEmpty()) {
-            historyCard.addView(createTextView("لا توجد صفقات مغلقة بعد.", 13, false));
+        if (trades.isEmpty()) {
+            historyCard.addView(createTextView("لا توجد صفقات تجريبية مسجلة بعد. يمكنك إضافتها عند إجراء التحليل.", 13, false));
         } else {
-            for (int i = closedTrades.size() - 1; i >= 0; i--) {
-                PortfolioManager.PortfolioTrade ct = closedTrades.get(i);
+            for (int i = trades.size() - 1; i >= 0; i--) {
+                final PaperTrade pt = trades.get(i);
                 LinearLayout item = createCardBox();
-                TextView headerTv = createTextView("📌 " + ct.type + " " + ct.symbol + " (" + ct.status + ")", 15, true);
-                headerTv.setTextColor("WIN".equals(ct.status) ? Color.GREEN : Color.RED);
-                item.addView(headerTv);
-
-                item.addView(createTextView("التاريخ: " + ct.date + " | الدخول: $" + String.format(Locale.US, "%.2f", ct.entryPrice) + " | الخروج: $" + String.format(Locale.US, "%.2f", ct.exitPrice), 13, false));
-                item.addView(createTextView("Lot: " + String.format(Locale.US, "%.2f", ct.lotSize) + " | SL: $" + String.format(Locale.US, "%.2f", ct.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", ct.tp1), 13, false));
-
-                TextView pnlResultTv = createTextView("P/L: $" + String.format(Locale.US, "%+.2f", ct.pnl) + " | R:R: 1:" + String.format(Locale.US, "%.2f", ct.rrRatio), 14, true);
-                pnlResultTv.setTextColor(ct.pnl >= 0 ? Color.GREEN : Color.RED);
-                item.addView(pnlResultTv);
-
-                Button detailBtn = createSecondaryButton("🔍 التفاصيل الكاملة للصفقة", v -> showTradeDetailModal(ct));
-                item.addView(detailBtn);
-
+                item.addView(createTextView("📌 " + pt.type + " " + pt.symbol + " (" + pt.status + ")", 15, true));
+                item.addView(createTextView("التاريخ: " + pt.date + " | الدخول: $" + String.format(Locale.US, "%.2f", pt.entryPrice), 13, false));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", pt.stopLoss) + " | TP1: $" + String.format(Locale.US, "%.2f", pt.tp1), 13, false));
+                if (pt.status.equals("OPEN")) {
+                    Button closeWin = createButton("إغلاق على ربح (+TP)", v -> closePaperTrade(pt, true));
+                    Button closeLoss = createSecondaryButton("إغلاق على خسارة (-SL)", v -> closePaperTrade(pt, false));
+                    LinearLayout btns = new LinearLayout(this);
+                    btns.setOrientation(LinearLayout.HORIZONTAL);
+                    btns.addView(closeWin, new LinearLayout.LayoutParams(0, -2, 1));
+                    btns.addView(closeLoss, new LinearLayout.LayoutParams(0, -2, 1));
+                    item.addView(btns);
+                } else {
+                    item.addView(createTextView("النتيجة: " + String.format(Locale.US, "%.2f$", pt.pnl) + " (" + pt.notes + ")", 14, true));
+                }
                 historyCard.addView(item);
             }
         }
         content.addView(historyCard);
-
-        // 5. Statistics Section
-        LinearLayout statCard = createCardBox();
-        statCard.addView(createTextView("📈 5. التحليلات الإحصائية (Statistics)", 16, true));
-
-        statCard.addView(createTextView("• Win Rate: " + String.format(Locale.US, "%.1f%%", sum.winRate) + " (الرابحة: " + sum.winningTrades + " / الخاسرة: " + sum.losingTrades + ")", 14, true));
-        statCard.addView(createTextView("• Profit Factor: " + String.format(Locale.US, "%.2f", sum.profitFactor), 14, true));
-        statCard.addView(createTextView("• Max Drawdown: " + String.format(Locale.US, "%.1f%%", sum.maxDrawdown), 14, false));
-        statCard.addView(createTextView("• متوسط الصفحات الرابحة: $" + String.format(Locale.US, "%.2f", sum.avgWin), 13, false));
-        statCard.addView(createTextView("• متوسط الصفحات الخاسرة: $" + String.format(Locale.US, "%.2f", sum.avgLoss), 13, false));
-        statCard.addView(createTextView("• أكبر صفقة رابحة (Largest Win): $" + String.format(Locale.US, "%.2f", sum.largestWin), 13, false));
-        statCard.addView(createTextView("• أكبر صفقة خاسرة (Largest Loss): $" + String.format(Locale.US, "%.2f", sum.largestLoss), 13, false));
-
-        content.addView(statCard);
-
-        // 7. Capital History Operations Log Section
-        LinearLayout capHistCard = createCardBox();
-        capHistCard.addView(createTextView("🏦 7. سجل العمليات والتعديلات على رأس المال (Capital History)", 16, true));
-
-        List<PortfolioManager.CapitalRecord> records = PortfolioManager.loadCapitalHistory(prefs);
-        if (records.isEmpty()) {
-            capHistCard.addView(createTextView("لا توجد عمليات سحب/إيداع أو تعديل مخاطر مسجلة بعد.", 13, false));
-        } else {
-            for (int i = records.size() - 1; i >= 0; i--) {
-                PortfolioManager.CapitalRecord r = records.get(i);
-                LinearLayout item = createCardBox();
-                item.addView(createTextView("⏱️ " + r.timestamp + " | " + r.type, 14, true));
-                item.addView(createTextView("القيمة: $" + String.format(Locale.US, "%.2f", r.amount) + " | من $" + String.format(Locale.US, "%.2f", r.oldVal) + " إلى $" + String.format(Locale.US, "%.2f", r.newVal), 13, false));
-                if (r.notes != null && !r.notes.isEmpty()) {
-                    item.addView(createTextView("ملاحظات: " + r.notes, 12, false));
-                }
-                capHistCard.addView(item);
-            }
-        }
-        content.addView(capHistCard);
-    }
-
-    // Modal Dialog for Trade Details
-    void showTradeDetailModal(PortfolioManager.PortfolioTrade t) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        LinearLayout box = createCardBox();
-        box.addView(createTextView("📌 تفاصيل الصفقة الكاملة", 18, true));
-        box.addView(createTextView("معرّف الصفقة: " + t.id, 11, false));
-        box.addView(createTextView("الرمز: " + t.symbol + " | نوع الصفقة: " + t.type, 14, true));
-        box.addView(createTextView("حالة الصفقة: " + t.status, 14, true));
-        box.addView(createTextView("تاريخ الوصل: " + t.date, 13, false));
-        box.addView(createTextView("سعر الدخول: $" + String.format(Locale.US, "%.2f", t.entryPrice), 13, false));
-        box.addView(createTextView("سعر الخروج: $" + String.format(Locale.US, "%.2f", t.exitPrice), 13, false));
-        box.addView(createTextView("وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", t.stopLoss), 13, false));
-        box.addView(createTextView("الهدف الأول (TP1): $" + String.format(Locale.US, "%.2f", t.tp1), 13, false));
-        box.addView(createTextView("الهدف الثاني (TP2): $" + String.format(Locale.US, "%.2f", t.tp2), 13, false));
-        box.addView(createTextView("حجم الصفقة (Lot): " + String.format(Locale.US, "%.2f", t.lotSize), 13, false));
-        box.addView(createTextView("مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", t.riskAmount), 13, false));
-        box.addView(createTextView("الأرباح / الخسائر P/L: $" + String.format(Locale.US, "%+.2f", t.pnl), 14, true));
-        box.addView(createTextView("نسبة Risk:Reward: 1 : " + String.format(Locale.US, "%.2f", t.rrRatio), 13, false));
-        box.addView(createTextView("سبب الدخول والتحليل:\n" + t.entryReason, 13, false));
-        box.addView(createTextView("ملاحظات: " + t.notes, 12, false));
-
-        builder.setView(box);
-        builder.setPositiveButton("إغلاق", (dialog, which) -> dialog.dismiss());
-        builder.show();
-    }
-
-    void showDepositDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("إيداع رأس مال للمحفظة");
-        LinearLayout layout = createCardBox();
-        EditText amtEd = createEditText("المبلغ بالدولار...", "");
-        EditText noteEd = createEditText("ملاحظات الإيداع...", "إيداع أرباح أو رأس مال جديد");
-        layout.addView(amtEd);
-        layout.addView(noteEd);
-        builder.setView(layout);
-        builder.setPositiveButton("تأكيد الإيداع", (dialog, which) -> {
-            try {
-                double amt = Double.parseDouble(amtEd.getText().toString().trim());
-                PortfolioManager.depositCapital(prefs, amt, noteEd.getText().toString().trim());
-                Toast.makeText(this, "تم الإيداع بنجاح!", Toast.LENGTH_SHORT).show();
-                showPortfolioScreen();
-            } catch (Exception e) {
-                Toast.makeText(this, "مبلغ غير صالح", Toast.LENGTH_SHORT).show();
-            }
-        });
-        builder.setNegativeButton("إلغاء", null);
-        builder.show();
-    }
-
-    void showWithdrawDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("سحب رأس مال من المحفظة");
-        LinearLayout layout = createCardBox();
-        EditText amtEd = createEditText("المبلغ بالدولار...", "");
-        EditText noteEd = createEditText("ملاحظات السحب...", "سحب أرباح مقتطعة");
-        layout.addView(amtEd);
-        layout.addView(noteEd);
-        builder.setView(layout);
-        builder.setPositiveButton("تأكيد السحب", (dialog, which) -> {
-            try {
-                double amt = Double.parseDouble(amtEd.getText().toString().trim());
-                PortfolioManager.withdrawCapital(prefs, amt, noteEd.getText().toString().trim());
-                Toast.makeText(this, "تم السحب بنجاح!", Toast.LENGTH_SHORT).show();
-                showPortfolioScreen();
-            } catch (Exception e) {
-                Toast.makeText(this, "مبلغ غير صالح", Toast.LENGTH_SHORT).show();
-            }
-        });
-        builder.setNegativeButton("إلغاء", null);
-        builder.show();
     }
 
     void executePaperTradeFromSignal(AnalysisResult res) {
-        PortfolioManager.PortfolioSummary sum = PortfolioManager.calculateSummary(prefs);
-        if (sum.isDailyLossExceeded) {
-            new AlertDialog.Builder(this)
-                .setTitle("⚠️ تحذير حد المخاطرة اليومية")
-                .setMessage("لقد تجاوزت الحد الأقصى للخسارة اليومية المحدد بـ (" + prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0") + "%).\nهل أنت متاكد من رغبتك في فتح صفقة جديدة رغم تجاوز الحد اليومي؟")
-                .setPositiveButton("فتح الصفقة على كل حال", (dialog, which) -> {
-                    PortfolioManager.executeTradeFromSignal(prefs, res);
-                    Toast.makeText(this, "تم فتح الصفقة التجريبية في المحفظة!", Toast.LENGTH_SHORT).show();
-                    showPortfolioScreen();
-                })
-                .setNegativeButton("التراجع والحفاظ على رأس المال", null)
-                .show();
-        } else {
-            PortfolioManager.executeTradeFromSignal(prefs, res);
-            Toast.makeText(this, "تم فتح الصفقة التجريبية في المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
-            showPortfolioScreen();
-        }
+        List<PaperTrade> list = loadPaperTrades();
+        PaperTrade t = new PaperTrade();
+        t.id = UUID.randomUUID().toString();
+        t.date = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
+        t.symbol = GOLD_SYMBOL;
+        t.type = res.signal.contains("BUY") ? "BUY" : "SELL";
+        t.entryPrice = res.entryPrice;
+        t.stopLoss = res.stopLoss;
+        t.tp1 = res.takeProfit1;
+        t.tp2 = res.takeProfit2;
+        t.status = "OPEN";
+        t.pnl = 0;
+        t.notes = "صفقة منفذة بناء على إشارة النظام";
+
+        list.add(t);
+        savePaperTrades(list);
+
+        Toast.makeText(this, "تم إضافة الصفقة التجريبية إلى السجل بنجاح!", Toast.LENGTH_SHORT).show();
+        showPaperTradingScreen();
     }
 
     void closePaperTrade(PaperTrade trade, boolean isWin) {
-        PortfolioManager.PortfolioTrade pt = new PortfolioManager.PortfolioTrade();
-        pt.id = trade.id;
-        pt.entryPrice = trade.entryPrice;
-        pt.stopLoss = trade.stopLoss;
-        pt.tp1 = trade.tp1;
-        pt.riskAmount = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000")) * (Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0")) / 100.0);
-        PortfolioManager.closeTrade(prefs, pt, isWin, 0.0);
-        showPortfolioScreen();
+        List<PaperTrade> list = loadPaperTrades();
+        for (PaperTrade t : list) {
+            if (t.id.equals(trade.id)) {
+                t.status = isWin ? "WIN" : "LOSS";
+                double riskAmount = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000")) * (Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0")) / 100.0);
+                t.pnl = isWin ? riskAmount * 1.5 : -riskAmount;
+                t.notes = isWin ? "تم ضرب الهدف" : "تم ضرب وقف الخسارة";
+                break;
+            }
+        }
+        savePaperTrades(list);
+        showPaperTradingScreen();
     }
 
     List<PaperTrade> loadPaperTrades() {
         List<PaperTrade> list = new ArrayList<>();
-        List<PortfolioManager.PortfolioTrade> pList = PortfolioManager.loadTrades(prefs);
-        for (PortfolioManager.PortfolioTrade pt : pList) {
-            PaperTrade t = new PaperTrade();
-            t.id = pt.id;
-            t.date = pt.date;
-            t.symbol = pt.symbol;
-            t.type = pt.type;
-            t.entryPrice = pt.entryPrice;
-            t.stopLoss = pt.stopLoss;
-            t.tp1 = pt.tp1;
-            t.tp2 = pt.tp2;
-            t.status = pt.status;
-            t.pnl = pt.pnl;
-            t.notes = pt.notes;
-            list.add(t);
-        }
+        try {
+            String jsonStr = prefs.getString(PREF_KEY_PAPER_TRADES, "[]");
+            JSONArray arr = new JSONArray(jsonStr);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                PaperTrade t = new PaperTrade();
+                t.id = obj.optString("id");
+                t.date = obj.optString("date");
+                t.symbol = obj.optString("symbol");
+                t.type = obj.optString("type");
+                t.entryPrice = obj.optDouble("entryPrice");
+                t.stopLoss = obj.optDouble("stopLoss");
+                t.tp1 = obj.optDouble("tp1");
+                t.tp2 = obj.optDouble("tp2");
+                t.status = obj.optString("status");
+                t.pnl = obj.optDouble("pnl");
+                t.notes = obj.optString("notes");
+                list.add(t);
+            }
+        } catch (Exception e) { e.printStackTrace(); }
         return list;
     }
 
     void savePaperTrades(List<PaperTrade> list) {
-        List<PortfolioManager.PortfolioTrade> pList = PortfolioManager.loadTrades(prefs);
-        for (PaperTrade t : list) {
-            boolean found = false;
-            for (PortfolioManager.PortfolioTrade pt : pList) {
-                if (pt.id.equals(t.id)) {
-                    pt.status = t.status;
-                    pt.pnl = t.pnl;
-                    pt.notes = t.notes;
-                    found = true;
-                    break;
-                }
+        try {
+            JSONArray arr = new JSONArray();
+            for (PaperTrade t : list) {
+                JSONObject obj = new JSONObject();
+                obj.put("id", t.id);
+                obj.put("date", t.date);
+                obj.put("symbol", t.symbol);
+                obj.put("type", t.type);
+                obj.put("entryPrice", t.entryPrice);
+                obj.put("stopLoss", t.stopLoss);
+                obj.put("tp1", t.tp1);
+                obj.put("tp2", t.tp2);
+                obj.put("status", t.status);
+                obj.put("pnl", t.pnl);
+                obj.put("notes", t.notes);
+                arr.put(obj);
             }
-            if (!found) {
-                PortfolioManager.PortfolioTrade pt = new PortfolioManager.PortfolioTrade();
-                pt.id = t.id;
-                pt.date = t.date;
-                pt.symbol = t.symbol;
-                pt.type = t.type;
-                pt.entryPrice = t.entryPrice;
-                pt.stopLoss = t.stopLoss;
-                pt.tp1 = t.tp1;
-                pt.tp2 = t.tp2;
-                pt.status = t.status;
-                pt.pnl = t.pnl;
-                pt.notes = t.notes;
-                pList.add(pt);
-            }
-        }
-        PortfolioManager.saveTrades(prefs, pList);
+            prefs.edit().putString(PREF_KEY_PAPER_TRADES, arr.toString()).apply();
+        } catch (Exception e) { e.printStackTrace(); }
     }
 
     static class PaperTrade {
