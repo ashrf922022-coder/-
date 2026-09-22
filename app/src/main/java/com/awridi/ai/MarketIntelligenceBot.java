@@ -20,10 +20,13 @@ public class MarketIntelligenceBot {
         public PatternIntelligenceEngine.PatternResult patternResult;
         public HistoricalSimilarityEngine.SimilarityReport similarityReport;
         public WalkForwardEngine.WalkForwardReport walkForwardReport;
-        public String decision; // BUY SETUP, SELL SETUP, WAIT
+        public String decision; // BUY SETUP, SELL SETUP, WAIT, NO TRADE
         public String decisionReason;
-        public double empiricalBullishPercentage;
+        public double empiricalSuccessRatePercentage;
         public int historicalSampleSize;
+        public double averageMovementAfterSignal;
+        public double averageMFE;
+        public double averageMAE;
         public double entryPrice;
         public double stopLoss;
         public double takeProfit1;
@@ -46,8 +49,8 @@ public class MarketIntelligenceBot {
         }
 
         if (bars15m == null || bars15m.isEmpty()) {
-            report.decision = "WAIT";
-            report.decisionReason = "بيانات الأسعار غير متوفرة حالياً";
+            report.decision = "NO TRADE 🚫";
+            report.decisionReason = "بيانات الأسعار غير متوفرة حالياً للذهب";
             return report;
         }
 
@@ -73,19 +76,22 @@ public class MarketIntelligenceBot {
         // Historical Similarity Match (top 15 cases)
         report.similarityReport = HistoricalSimilarityEngine.findSimilarHistoricalContexts(cleanBars, curIdx, 15);
         report.historicalSampleSize = report.similarityReport.sampleSize;
-        report.empiricalBullishPercentage = report.similarityReport.empiricalBullishOutcomePct;
+        report.empiricalSuccessRatePercentage = report.similarityReport.empiricalSuccessRatePct;
+        report.averageMovementAfterSignal = report.similarityReport.averageMovementAfterSignal;
+        report.averageMFE = report.similarityReport.averageMFE;
+        report.averageMAE = report.similarityReport.averageMAE;
 
         // Walk-Forward Analysis
         report.walkForwardReport = WalkForwardEngine.runWalkForwardAnalysis(cleanBars, prefs);
 
-        // Signal synthesis
+        // Signal synthesis logic
         boolean isBuySetup = report.mtfAlignment.isFullyAligned && report.mtfAlignment.alignmentSummary.contains("صاعد") &&
                              report.marketState.primaryRegime == MarketStateEngine.Regime.TREND_UP &&
-                             report.empiricalBullishPercentage >= 60.0;
+                             report.similarityReport.isSufficientData && report.empiricalSuccessRatePercentage >= 60.0;
 
         boolean isSellSetup = report.mtfAlignment.isFullyAligned && report.mtfAlignment.alignmentSummary.contains("هابط") &&
                               report.marketState.primaryRegime == MarketStateEngine.Regime.TREND_DOWN &&
-                              report.empiricalBullishPercentage <= 40.0;
+                              report.similarityReport.isSufficientData && report.empiricalSuccessRatePercentage <= 40.0;
 
         double atr = Math.max(1.5, features.atr14);
 
@@ -97,7 +103,7 @@ public class MarketIntelligenceBot {
             report.takeProfit2 = report.entryPrice + (3.0 * atr);
             report.confirmationCondition = "إغلاق شمعة 15 دقيقة أعلى من $" + String.format(Locale.US, "%.2f", report.entryPrice + (0.5 * atr));
             report.invalidationCondition = "كسر وإغلاق أسفل مستوى وقف الخسارة $" + String.format(Locale.US, "%.2f", report.stopLoss);
-            report.decisionReason = "توافق صاعد عبر جميع الأطر الزمنية مع نسبة حدوث تاريخية إيجابية قدرها " + String.format(Locale.US, "%.1f", report.empiricalBullishPercentage) + "% بين " + report.historicalSampleSize + " حالة مشابهة.";
+            report.decisionReason = "توافق صاعد تام عبر جميع الأطر الزمنية مع نسبة نجاح تاريخية صعودية قدرها " + String.format(Locale.US, "%.1f", report.empiricalSuccessRatePercentage) + "% بين " + report.historicalSampleSize + " حالة مشابهة.";
         } else if (isSellSetup) {
             report.decision = "SELL SETUP 🔴";
             report.entryPrice = report.currentPrice;
@@ -106,17 +112,24 @@ public class MarketIntelligenceBot {
             report.takeProfit2 = report.entryPrice - (3.0 * atr);
             report.confirmationCondition = "إغلاق شمعة 15 دقيقة أسفل من $" + String.format(Locale.US, "%.2f", report.entryPrice - (0.5 * atr));
             report.invalidationCondition = "اختراق وإغلاق أعلى مستوى وقف الخسارة $" + String.format(Locale.US, "%.2f", report.stopLoss);
-            report.decisionReason = "توافق هابط عبر جميع الأطر الزمنية مع نسبة حدوث تاريخية سلبية قدرها " + String.format(Locale.US, "%.1f", 100.0 - report.empiricalBullishPercentage) + "% بين " + report.historicalSampleSize + " حالة مشابهة.";
+            report.decisionReason = "توافق هابط تام عبر جميع الأطر الزمنية مع نسبة نجاح تاريخية هبوطية قدرها " + String.format(Locale.US, "%.1f", 100.0 - report.empiricalSuccessRatePercentage) + "% بين " + report.historicalSampleSize + " حالة مشابهة.";
+        } else if (report.marketState.primaryRegime == MarketStateEngine.Regime.HIGH_VOLATILITY) {
+            report.decision = "NO TRADE 🚫";
+            report.entryPrice = report.currentPrice;
+            report.stopLoss = 0; report.takeProfit1 = 0; report.takeProfit2 = 0;
+            report.confirmationCondition = "انخفاض درجة تقلب السوق دون مستوى ATR المتطرف";
+            report.invalidationCondition = "تجنب التداول المطلق عند الشموع المتطرفة";
+            report.decisionReason = "الذهب يتداول في بيئة عالية التقلب والمخاطرة؛ يُمنع التداول لحماية رأس المال.";
         } else {
             report.decision = "WAIT ⏳";
             report.entryPrice = report.currentPrice;
             report.stopLoss = 0; report.takeProfit1 = 0; report.takeProfit2 = 0;
-            report.confirmationCondition = "انتظار اكتمال التوافق بين الأطر الزمنية وتجاوز نسبة التوافق التاريخي 60%";
-            report.invalidationCondition = "عدم التداول في ظروف النطاق العرضي أو الشك";
+            report.confirmationCondition = "انتظار اكتمال التوافق بين الأطر الزمنية وتجاوز نسبة النجاح التاريخي 60%";
+            report.invalidationCondition = "عدم التداول في ظروف النطاق العرضي أو تعارض المؤشرات";
             report.decisionReason = "الأدلة التاريخية والتوافق بين الأطر الزمنية غير كافية حالياً لجزم إشارة آمنة.";
         }
 
-        // Calculate Risk & Lot
+        // Calculate Risk & Lot Size
         if (report.stopLoss > 0) {
             double riskDiff = Math.abs(report.entryPrice - report.stopLoss);
             report.riskRewardRatio = Math.abs(report.takeProfit1 - report.entryPrice) / Math.max(0.1, riskDiff);
@@ -138,22 +151,39 @@ public class MarketIntelligenceBot {
     private static String buildArabicSummary(MarketIntelligenceReport r) {
         StringBuilder sb = new StringBuilder();
         sb.append("━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("📊 ذكاء السوق | ").append(r.symbol).append("\n");
+        sb.append("🧠 ذكاء السوق | ").append(r.symbol).append("\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━\n");
         sb.append("• السعر الحالي: $").append(String.format(Locale.US, "%.2f", r.currentPrice)).append("\n");
-        sb.append("• حالة السوق: ").append(r.marketState.trendDescription).append("\n");
-        sb.append("• توافق الأطر: ").append(r.mtfAlignment.alignmentSummary).append("\n");
-        sb.append("• النمط الفني: ").append(r.patternResult.arabicDescription).append("\n");
-        sb.append("• التشابه التاريخي: ").append(String.format(Locale.US, "%.1f", r.empiricalBullishPercentage)).append("% حدوث صاعد عبر ").append(r.historicalSampleSize).append(" حالة مشابهة\n");
-        sb.append("• القرار: ").append(r.decision).append("\n");
-        sb.append("• السبب: ").append(r.decisionReason).append("\n");
-        if (r.stopLoss > 0) {
-            sb.append("• سعر الدخول: $").append(String.format(Locale.US, "%.2f", r.entryPrice)).append("\n");
-            sb.append("• وقف الخسارة: $").append(String.format(Locale.US, "%.2f", r.stopLoss)).append("\n");
-            sb.append("• الهدف الأول: $").append(String.format(Locale.US, "%.2f", r.takeProfit1)).append("\n");
-            sb.append("• عائد/مخاطرة: 1:").append(String.format(Locale.US, "%.2f", r.riskRewardRatio)).append("\n");
-            sb.append("• العقد المقترح: ").append(String.format(Locale.US, "%.2f", r.suggestedLotSize)).append(" لوت\n");
+        sb.append("• اتجاه السوق (Market Trend): ").append(r.marketState.trendDescription).append("\n");
+        sb.append("• درجة الزخم (Momentum): ").append(r.marketState.momentumDescription).append("\n");
+        sb.append("• التقلب (Volatility): ").append(r.marketState.volatilityDescription).append("\n");
+        sb.append("• توافق الأطر الزمنية: ").append(r.mtfAlignment.alignmentSummary).append("\n");
+        sb.append("• النمط الفني: ").append(r.patternResult.arabicDescription).append("\n\n");
+
+        sb.append("📊 التحليل التاريخي (Historical Analysis):\n");
+        if (r.similarityReport != null && r.similarityReport.isSufficientData) {
+            sb.append("• عدد الحالات المشابهة: ").append(r.historicalSampleSize).append(" حالة\n");
+            sb.append("• نسبة النجاح التاريخية: ").append(String.format(Locale.US, "%.1f", r.empiricalSuccessRatePercentage)).append("%\n");
+            sb.append("• متوسط الحركة بعد الإشارة: $").append(String.format(Locale.US, "%.2f", r.averageMovementAfterSignal)).append("\n");
+            sb.append("• أقصى حركية لصالح الصفقة (MFE): $").append(String.format(Locale.US, "%.2f", r.averageMFE)).append("\n");
+            sb.append("• أقصى حركية عكسية (MAE): $").append(String.format(Locale.US, "%.2f", r.averageMAE)).append("\n\n");
+        } else {
+            sb.append("• ").append(r.similarityReport != null ? r.similarityReport.statusMessageArabic : "بيانات غير كافية للتحليل التاريخي").append("\n\n");
         }
+
+        sb.append("🎯 القرار النهائي (Final Analytical State): ").append(r.decision).append("\n");
+        sb.append("💡 سبب القرار: ").append(r.decisionReason).append("\n\n");
+
+        if (r.stopLoss > 0) {
+            sb.append("🛡️ تقييم إدارة المخاطر (Risk Analysis):\n");
+            sb.append("• سعر الدخول (Entry): $").append(String.format(Locale.US, "%.2f", r.entryPrice)).append("\n");
+            sb.append("• وقف الخسارة (Stop Loss): $").append(String.format(Locale.US, "%.2f", r.stopLoss)).append("\n");
+            sb.append("• الهدف الأول (TP1): $").append(String.format(Locale.US, "%.2f", r.takeProfit1)).append("\n");
+            sb.append("• الهدف الثاني (TP2): $").append(String.format(Locale.US, "%.2f", r.takeProfit2)).append("\n");
+            sb.append("• عائد/مخاطرة (R:R): 1:").append(String.format(Locale.US, "%.2f", r.riskRewardRatio)).append("\n");
+            sb.append("• حجم العقد المقترح: ").append(String.format(Locale.US, "%.2f", r.suggestedLotSize)).append(" لوت\n\n");
+        }
+
         sb.append("• شرط التأكيد: ").append(r.confirmationCondition).append("\n");
         sb.append("• شرط الإلغاء: ").append(r.invalidationCondition).append("\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━");

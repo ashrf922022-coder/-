@@ -2,7 +2,6 @@ package com.awridi.ai;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -19,19 +18,21 @@ public class HistoricalSimilarityEngine {
         public final double priceAfter5Bars;
         public final double priceAfter10Bars;
         public final double priceAfter20Bars;
+        public final double movementAfterSignal; // Net price change over 20 bars
         public final double mfe20; // Maximum Favorable Excursion (highest gain over 20 bars)
         public final double mae20; // Maximum Adverse Excursion (highest drawdown over 20 bars)
         public final boolean targetHitBeforeStop; // Evaluated against 1.5x ATR target and SL
 
         public SimilarityMatch(int historicalIndex, double similarityScore, MarketStateEngine.Regime historicalRegime,
                                double priceAfter5Bars, double priceAfter10Bars, double priceAfter20Bars,
-                               double mfe20, double mae20, boolean targetHitBeforeStop) {
+                               double movementAfterSignal, double mfe20, double mae20, boolean targetHitBeforeStop) {
             this.historicalIndex = historicalIndex;
             this.similarityScore = similarityScore;
             this.historicalRegime = historicalRegime;
             this.priceAfter5Bars = priceAfter5Bars;
             this.priceAfter10Bars = priceAfter10Bars;
             this.priceAfter20Bars = priceAfter20Bars;
+            this.movementAfterSignal = movementAfterSignal;
             this.mfe20 = mfe20;
             this.mae20 = mae20;
             this.targetHitBeforeStop = targetHitBeforeStop;
@@ -39,51 +40,59 @@ public class HistoricalSimilarityEngine {
     }
 
     public static class SimilarityReport {
+        public final boolean isSufficientData;
         public final int sampleSize;
         public final List<SimilarityMatch> matches;
         public final double averageSimilarityScore;
-        public final double empiricalBullishOutcomePct; // % of matches where price rose over 20 bars
+        public final double empiricalSuccessRatePct; // % of matches where movement favoured the signal
+        public final double averageMovementAfterSignal;
         public final double averageMFE;
         public final double averageMAE;
         public final int targetHitCount;
+        public final String statusMessageArabic;
 
-        public SimilarityReport(int sampleSize, List<SimilarityMatch> matches, double averageSimilarityScore,
-                                double empiricalBullishOutcomePct, double averageMFE, double averageMAE, int targetHitCount) {
+        public SimilarityReport(boolean isSufficientData, int sampleSize, List<SimilarityMatch> matches,
+                                double averageSimilarityScore, double empiricalSuccessRatePct,
+                                double averageMovementAfterSignal, double averageMFE, double averageMAE,
+                                int targetHitCount, String statusMessageArabic) {
+            this.isSufficientData = isSufficientData;
             this.sampleSize = sampleSize;
             this.matches = matches;
             this.averageSimilarityScore = averageSimilarityScore;
-            this.empiricalBullishOutcomePct = empiricalBullishOutcomePct;
+            this.empiricalSuccessRatePct = empiricalSuccessRatePct;
+            this.averageMovementAfterSignal = averageMovementAfterSignal;
             this.averageMFE = averageMFE;
             this.averageMAE = averageMAE;
             this.targetHitCount = targetHitCount;
+            this.statusMessageArabic = statusMessageArabic;
         }
     }
 
     public static SimilarityReport findSimilarHistoricalContexts(List<GoldAnalysisEngine.Bar> bars, int currentIdx, int topN) {
-        if (bars == null || bars.size() < 50 || currentIdx < 30 || currentIdx >= bars.size()) {
-            return new SimilarityReport(0, new ArrayList<>(), 0, 0, 0, 0, 0);
+        if (bars == null || bars.size() < 30 || currentIdx < 20 || currentIdx >= bars.size()) {
+            return new SimilarityReport(false, 0, new ArrayList<>(), 0, 0, 0, 0, 0, 0, "بيانات غير كافية للتحليل التاريخي");
         }
 
         FeatureEngine.FeatureVector currentFeatures = FeatureEngine.extractFeatures(bars, currentIdx);
         List<SimilarityMatch> candidates = new ArrayList<>();
 
-        // Prevent look-ahead bias: search strictly up to currentIdx - 25 (allowing 20 bars forward evaluation)
-        int searchEnd = currentIdx - 25;
+        // Prevent look-ahead bias: search strictly up to currentIdx - 20
+        int searchEnd = currentIdx - 20;
 
-        for (int i = 30; i <= searchEnd; i++) {
+        for (int i = 20; i <= searchEnd; i++) {
             FeatureEngine.FeatureVector histFeatures = FeatureEngine.extractFeatures(bars, i);
 
             double dist = computeNormalizedEuclideanDistance(currentFeatures, histFeatures);
             double simScore = Math.max(0.0, 1.0 - (dist / 10.0));
 
-            if (simScore >= 0.60) {
-                // Evaluate 20 bars forward outcome
+            if (simScore >= 0.55) {
                 GoldAnalysisEngine.Bar matchBar = bars.get(i);
                 double basePrice = matchBar.c;
 
                 double p5 = (i + 5 < bars.size()) ? bars.get(i + 5).c : basePrice;
                 double p10 = (i + 10 < bars.size()) ? bars.get(i + 10).c : basePrice;
                 double p20 = (i + 20 < bars.size()) ? bars.get(i + 20).c : basePrice;
+                double netMovement = p20 - basePrice;
 
                 double maxGain = 0;
                 double maxDrawdown = 0;
@@ -109,7 +118,7 @@ public class HistoricalSimilarityEngine {
                 }
 
                 MarketStateEngine.MarketState histState = MarketStateEngine.evaluateMarketState(bars.subList(0, i + 1), histFeatures);
-                candidates.add(new SimilarityMatch(i, simScore, histState.primaryRegime, p5, p10, p20, maxGain, maxDrawdown, targetHitFirst));
+                candidates.add(new SimilarityMatch(i, simScore, histState.primaryRegime, p5, p10, p20, netMovement, maxGain, maxDrawdown, targetHitFirst));
             }
         }
 
@@ -118,12 +127,13 @@ public class HistoricalSimilarityEngine {
 
         List<SimilarityMatch> topMatches = candidates.subList(0, Math.min(topN, candidates.size()));
         if (topMatches.isEmpty()) {
-            return new SimilarityReport(0, new ArrayList<>(), 0, 0, 0, 0, 0);
+            return new SimilarityReport(false, 0, new ArrayList<>(), 0, 0, 0, 0, 0, 0, "بيانات غير كافية للتحليل التاريخي (لا توجد نماذج مشابهة)");
         }
 
         double simSum = 0;
         double mfeSum = 0;
         double maeSum = 0;
+        double movementSum = 0;
         int bullishCount = 0;
         int targetHits = 0;
 
@@ -131,7 +141,8 @@ public class HistoricalSimilarityEngine {
             simSum += m.similarityScore;
             mfeSum += m.mfe20;
             maeSum += m.mae20;
-            if (m.priceAfter20Bars > bars.get(m.historicalIndex).c) bullishCount++;
+            movementSum += m.movementAfterSignal;
+            if (m.movementAfterSignal > 0) bullishCount++;
             if (m.targetHitBeforeStop) targetHits++;
         }
 
@@ -139,9 +150,10 @@ public class HistoricalSimilarityEngine {
         double avgSim = simSum / size;
         double avgMFE = mfeSum / size;
         double avgMAE = maeSum / size;
-        double bullPct = ((double) bullishCount / size) * 100.0;
+        double avgMovement = movementSum / size;
+        double successRate = ((double) bullishCount / size) * 100.0;
 
-        return new SimilarityReport(size, topMatches, avgSim, bullPct, avgMFE, avgMAE, targetHits);
+        return new SimilarityReport(true, size, topMatches, avgSim, successRate, avgMovement, avgMFE, avgMAE, targetHits, "تم تحليل " + size + " حالة تاريخية مشابهة بنجاح");
     }
 
     private static double computeNormalizedEuclideanDistance(FeatureEngine.FeatureVector a, FeatureEngine.FeatureVector b) {

@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
         t.setText(text);
         t.setTextColor(textColor);
         t.setTextSize(spSize);
+        t.setTextIsSelectable(true); // Allow long-press selection & copying
         if (bold) t.setTypeface(null, Typeface.BOLD);
         t.setPadding(0, 4, 0, 4);
         return t;
@@ -184,7 +185,7 @@ public class MainActivity extends Activity {
         navBar.setBackgroundColor(surfaceColor);
         navBar.setGravity(Gravity.CENTER);
 
-        String[] tabs = {"الرئيسية", "ذكاء السوق", "التداول التجريبي", "Backtest", "المساعد", "الإعدادات"};
+        String[] tabs = {"الرئيسية", "🧠 Market Intelligence", "التداول التجريبي", "Backtest", "المساعد", "الإعدادات"};
         String[] keys = {"home", "intel", "paper", "backtest", "assistant", "settings"};
 
         for (int i = 0; i < tabs.length; i++) {
@@ -251,7 +252,7 @@ public class MainActivity extends Activity {
         setupBaseLayout("intel");
 
         LinearLayout heroCard = createCardBox();
-        heroCard.addView(createTextView("🧠 طبقة ذكاء السوق (Market Intelligence)", 20, true));
+        heroCard.addView(createTextView("🧠 Market Intelligence Bot (XAU/USD)", 20, true));
         heroCard.addView(createTextView("تحليل السلوك التاريخي + التشابه + Walk-Forward + منع Look-Ahead Bias", 13, false));
         content.addView(heroCard);
 
@@ -267,15 +268,18 @@ public class MainActivity extends Activity {
     void displayMarketIntelligenceReport(MarketIntelligenceBot.MarketIntelligenceReport r) {
         LinearLayout reportCard = createCardBox();
         reportCard.addView(createTextView("📊 ملخص ذكاء السوق الحاضر والتاريخي", 18, true));
-        reportCard.addView(createTextView(r.fullArabicSummary, 14, false));
 
-        // Copy & Share Actions
-        Button copyBtn = createSecondaryButton("📋 نسخ التحليل بالكامل", v -> {
+        TextView reportTv = createTextView(r.fullArabicSummary, 14, false);
+        reportTv.setTextIsSelectable(true);
+        reportCard.addView(reportTv);
+
+        // Copy & Share Report Actions
+        Button copyBtn = createSecondaryButton("📋 نسخ التقرير", v -> {
             AnalysisShareHelper.copyTextToClipboard(this, r.fullArabicSummary);
         });
 
-        Button shareBtn = createButton("📤 مشاركة النتائج", v -> {
-            AnalysisShareHelper.shareText(this, r.fullArabicSummary, "مشاركة نتائج ذكاء السوق XAU/USD");
+        Button shareBtn = createButton("📤 مشاركة التقرير", v -> {
+            AnalysisShareHelper.shareText(this, r.fullArabicSummary, "مشاركة تقرير ذكاء السوق XAU/USD");
         });
 
         LinearLayout btns = new LinearLayout(this);
