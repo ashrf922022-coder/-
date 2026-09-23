@@ -56,6 +56,9 @@ public class MarketIntelligenceEngine {
 
         public int marketScore;
 
+        // Trading Decision Engine integration
+        public TradingDecisionResult tradingDecision;
+
         // Educational Signal fields
         public String educationalSignal = "WAIT ⏳";
         public double confidenceScore = 0.50; // 0.00 to 1.00
@@ -126,6 +129,10 @@ public class MarketIntelligenceEngine {
         result.marketState = detectMarketState(result);
 
         result.marketScore = calculateScore(result);
+
+        // Compute decision via TradingDecisionEngine layer
+        TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
+        result.tradingDecision = decisionEngine.evaluate(bars);
 
         // Compute indicator evaluations & educational signal
         evaluateIndicators(result);
