@@ -62,6 +62,10 @@ public class TradingDecisionEngine {
         // Volatility Analysis
         analyzeVolatility(result);
 
+        // Evaluate Market Regime
+        MarketRegimeEngine regimeEngine = new MarketRegimeEngine();
+        result.marketRegime = regimeEngine.evaluateAtCandle(bars, n - 1);
+
         // Multi-Factor Alignment Evaluation
         evaluateMultiFactorDecision(result);
 
@@ -184,6 +188,9 @@ public class TradingDecisionEngine {
         sb.append("• نسبة الثقة: ").append(String.format(Locale.US, "%.1f%%", res.confidence)).append("\n");
         sb.append("• النقاط الفنية: صاعدة (").append(res.bullishScore).append(") | هابطة (").append(res.bearishScore).append(") | الإجمالي (").append(res.totalScore).append(")\n");
         sb.append("• الاتجاه الفني: ").append(res.trend).append(" (قوة الاتجاه: ").append(res.trendStrength).append(")\n");
+        if (res.marketRegime != null && res.marketRegime.regime != null) {
+            sb.append("• حالة السوق (Regime): ").append(res.marketRegime.regime.name()).append(" (نسبة الثقة: ").append(String.format(Locale.US, "%.1f%%", res.marketRegime.confidence)).append(")\n");
+        }
         sb.append("• حالة الزخم: ").append(res.momentum).append(" | RSI: ").append(String.format(Locale.US, "%.1f", res.rsi)).append("\n");
         sb.append("• مستوى التقلب ATR: ").append(String.format(Locale.US, "%.2f", res.atrValue)).append(" (").append(res.volatility).append(")\n");
         sb.append("• بنية السعر: ").append(res.priceStructure).append("\n");

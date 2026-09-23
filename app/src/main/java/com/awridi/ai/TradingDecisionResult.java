@@ -47,6 +47,8 @@ public class TradingDecisionResult {
     public double confidence = 0.0; // Confidence % (0.0 to 100.0)
     public String signalQuality = "INVALID"; // "HIGH", "MEDIUM", "LOW", "INVALID"
 
+    public MarketRegimeResult marketRegime;
+
     public List<String> supportingFactors = new ArrayList<>();
     public List<String> conflictingFactors = new ArrayList<>();
     public String arabicExplanation = "";
@@ -67,6 +69,7 @@ public class TradingDecisionResult {
                 ", momentum='" + momentum + '\'' +
                 ", volatility='" + volatility + '\'' +
                 ", priceStructure='" + priceStructure + '\'' +
+                ", marketRegime=" + (marketRegime != null ? marketRegime.regime : "NULL") +
                 ", supportingFactors=" + supportingFactors.size() +
                 ", conflictingFactors=" + conflictingFactors.size() +
                 '}';
