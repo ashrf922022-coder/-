@@ -60,6 +60,15 @@ public class TradingDecisionEngine {
         // Multi-Factor Alignment Evaluation
         evaluateMultiFactorDecision(result);
 
+        // Phase 2 Signal Scoring Integration
+        SignalScoringEngine scoringEngine = new SignalScoringEngine();
+        SignalScoringEngine.ScoreResult scoreRes = scoringEngine.computeScores(result);
+        result.bullishScore = scoreRes.bullishScore;
+        result.bearishScore = scoreRes.bearishScore;
+        result.totalScore = scoreRes.totalScore;
+        result.confidencePct = scoreRes.confidencePct;
+        result.signalQuality = scoreRes.quality;
+
         // Generate Arabic Rationale
         generateArabicRationale(result);
 
@@ -252,6 +261,11 @@ public class TradingDecisionEngine {
     private void generateArabicRationale(TradingDecisionResult res) {
         StringBuilder sb = new StringBuilder();
         sb.append("• القرار النهائي: ").append(res.decision.name()).append("\n");
+        sb.append("• جودة الإشارة (Signal Quality): ").append(res.signalQuality.name()).append("\n");
+        sb.append("• درجة الاتفاق (Confidence %): ").append(String.format(Locale.US, "%.1f%%", res.confidencePct)).append("\n");
+        sb.append("• التقييم التجميعي: Bullish = ").append(String.format(Locale.US, "%.1f", res.bullishScore))
+                .append(" | Bearish = ").append(String.format(Locale.US, "%.1f", res.bearishScore))
+                .append(" | Net = ").append(String.format(Locale.US, "%.1f", res.totalScore)).append("\n");
         sb.append("• الاتجاه الفني: ").append(res.trend).append(" (قوة الاتجاه: ").append(res.trendStrength).append(")\n");
         sb.append("• حالة الزخم: ").append(res.momentum).append(" | RSI: ").append(String.format(Locale.US, "%.1f", res.rsi)).append("\n");
         sb.append("• مستوى التقلب ATR: ").append(String.format(Locale.US, "%.2f", res.atrValue)).append(" (").append(res.volatility).append(")\n");

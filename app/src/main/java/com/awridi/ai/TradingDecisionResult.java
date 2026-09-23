@@ -19,6 +19,13 @@ public class TradingDecisionResult {
         UNKNOWN
     }
 
+    public enum SignalQuality {
+        HIGH,
+        MEDIUM,
+        LOW,
+        INVALID
+    }
+
     public String symbol = "XAU/USD";
     public Direction direction = Direction.NEUTRAL;
     public Decision decision = Decision.NO_TRADE;
@@ -41,6 +48,13 @@ public class TradingDecisionResult {
     public double rsi = 50.0;
     public double macdHist = 0.0;
 
+    // Phase 2 Signal Scoring fields
+    public double bullishScore = 0.0;
+    public double bearishScore = 0.0;
+    public double totalScore = 0.0;
+    public double confidencePct = 0.0; // 0.0% to 100.0%
+    public SignalQuality signalQuality = SignalQuality.INVALID;
+
     public List<String> supportingFactors = new ArrayList<>();
     public List<String> conflictingFactors = new ArrayList<>();
     public String arabicExplanation = "";
@@ -56,6 +70,11 @@ public class TradingDecisionResult {
                 ", momentum='" + momentum + '\'' +
                 ", volatility='" + volatility + '\'' +
                 ", priceStructure='" + priceStructure + '\'' +
+                ", bullishScore=" + bullishScore +
+                ", bearishScore=" + bearishScore +
+                ", totalScore=" + totalScore +
+                ", confidencePct=" + confidencePct +
+                ", signalQuality=" + signalQuality +
                 ", supportingFactors=" + supportingFactors.size() +
                 ", conflictingFactors=" + conflictingFactors.size() +
                 '}';
