@@ -79,6 +79,100 @@ public class BacktestEngine {
         return bt;
     }
 
+    public static BacktestResult runTradingDecisionBacktest(List<MarketIntelligenceEngine.Bar> bars, SharedPreferences prefs) {
+        BacktestResult bt = new BacktestResult();
+        double startCap = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_CAPITAL, "10000"));
+        double cash = startCap, peak = cash;
+        int wins = 0, losses = 0;
+        int currentLossStreak = 0, maxLossStreak = 0;
+
+        TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
+
+        for (int i = 30; i < bars.size() - 1; i++) {
+            // Evaluate candle at index i with zero look-ahead bias
+            TradingDecisionResult decisionRes = decisionEngine.evaluateAtCandle(bars, i);
+            MarketIntelligenceEngine.Bar bar = bars.get(i);
+            double atr = Math.max(1.0, decisionRes.atrValue);
+
+            if (decisionRes.decision == TradingDecisionResult.Decision.BUY) {
+                bt.totalTrades++;
+                double entry = bar.close;
+                double sl = entry - (atr * 1.5);
+                double tp = entry + (atr * 2.0);
+
+                for (int j = i + 1; j < bars.size(); j++) {
+                    MarketIntelligenceEngine.Bar futureBar = bars.get(j);
+                    if (futureBar.high >= tp) {
+                        wins++;
+                        double pnl = atr * 2.0 * 10;
+                        cash += pnl;
+                        bt.grossProfit += pnl;
+                        currentLossStreak = 0;
+                        i = j;
+                        break;
+                    } else if (futureBar.low <= sl) {
+                        losses++;
+                        double lossAmt = atr * 1.5 * 10;
+                        cash -= lossAmt;
+                        bt.grossLoss += lossAmt;
+                        if (lossAmt > bt.largestLoss) {
+                            bt.largestLoss = lossAmt;
+                        }
+                        currentLossStreak++;
+                        if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+                        i = j;
+                        break;
+                    }
+                }
+            } else if (decisionRes.decision == TradingDecisionResult.Decision.SELL) {
+                bt.totalTrades++;
+                double entry = bar.close;
+                double sl = entry + (atr * 1.5);
+                double tp = entry - (atr * 2.0);
+
+                for (int j = i + 1; j < bars.size(); j++) {
+                    MarketIntelligenceEngine.Bar futureBar = bars.get(j);
+                    if (futureBar.low <= tp) {
+                        wins++;
+                        double pnl = atr * 2.0 * 10;
+                        cash += pnl;
+                        bt.grossProfit += pnl;
+                        currentLossStreak = 0;
+                        i = j;
+                        break;
+                    } else if (futureBar.high >= sl) {
+                        losses++;
+                        double lossAmt = atr * 1.5 * 10;
+                        cash -= lossAmt;
+                        bt.grossLoss += lossAmt;
+                        if (lossAmt > bt.largestLoss) {
+                            bt.largestLoss = lossAmt;
+                        }
+                        currentLossStreak++;
+                        if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+                        i = j;
+                        break;
+                    }
+                }
+            }
+
+            peak = Math.max(peak, cash);
+            double dd = peak > 0 ? (peak - cash) / peak : 0;
+            if (dd > bt.maxDrawdown) bt.maxDrawdown = dd;
+        }
+
+        bt.finalCapital = cash;
+        bt.netPnl = bt.grossProfit - bt.grossLoss;
+        bt.winRate = bt.totalTrades > 0 ? (double) wins / bt.totalTrades : 0;
+        bt.lossRate = bt.totalTrades > 0 ? (double) losses / bt.totalTrades : 0;
+        bt.profitFactor = bt.grossLoss > 0 ? bt.grossProfit / bt.grossLoss : (bt.grossProfit > 0 ? 99.0 : 0);
+        bt.avgWin = wins > 0 ? bt.grossProfit / wins : 0;
+        bt.avgLoss = losses > 0 ? bt.grossLoss / losses : 0;
+        bt.longestLosingStreak = maxLossStreak;
+
+        return bt;
+    }
+
     public static BacktestResult runMarketIntelligenceBacktest(List<MarketIntelligenceEngine.Bar> miBars, SharedPreferences prefs) {
         List<GoldAnalysisEngine.Bar> goldBars = new ArrayList<>();
         if (miBars != null) {
