@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
 
     // Current Analysis Result Cache
     AnalysisResult currentAnalysis = null;
+    MarketIntelligenceEngine.Result currentMarketIntel = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -810,24 +811,32 @@ String[] keys = {
 
         executor.submit(() -> {
             try {
-                List<Bar> bars = fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
-                BacktestResult bt = runGoldBacktest(bars);
+                List<Bar> fetchBars = fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
+                List<GoldAnalysisEngine.Bar> engineBars = new ArrayList<>();
+                for (Bar b : fetchBars) {
+                    engineBars.add(new GoldAnalysisEngine.Bar(b.o, b.h, b.l, b.c, b.v));
+                }
+
+                BacktestEngine.BacktestResult bt = BacktestEngine.runGoldBacktest(engineBars, prefs);
 
                 runOnUiThread(() -> {
                     showBacktestScreen(); // clear view
                     LinearLayout resCard = createCardBox();
                     resCard.addView(createTextView("📊 نتائج اختبار استراتيجية الذهب XAU/USD", 18, true));
-                    resCard.addView(createTextView("• عدد الصفقات الكلي: " + bt.totalTrades, 14, false));
+                    resCard.addView(createTextView("• عدد الصفقات الكلي: " + bt.totalTrades + " (الرابحة: " + bt.winningTrades + " / الخاسرة: " + bt.losingTrades + ")", 14, false));
                     resCard.addView(createTextView("• نسبة الصفقات الرابحة: " + String.format(Locale.US, "%.1f%%", bt.winRate * 100), 14, true));
                     resCard.addView(createTextView("• نسبة الصفقات الخاسرة: " + String.format(Locale.US, "%.1f%%", bt.lossRate * 100), 14, false));
-                    resCard.addView(createTextView("• إجمالي الأرباح: $" + String.format(Locale.US, "%.2f", bt.grossProfit), 14, false));
-                    resCard.addView(createTextView("• إجمالي الخسائر: $" + String.format(Locale.US, "%.2f", bt.grossLoss), 14, false));
+                    resCard.addView(createTextView("• إجمالي الأرباح (Gross Profit): $" + String.format(Locale.US, "%.2f", bt.grossProfit), 14, false));
+                    resCard.addView(createTextView("• إجمالي الخسائر (Gross Loss): $" + String.format(Locale.US, "%.2f", bt.grossLoss), 14, false));
+                    resCard.addView(createTextView("• صافي الأرباح (Net Profit): $" + String.format(Locale.US, "%+.2f", bt.netProfit), 15, true));
                     resCard.addView(createTextView("• Profit Factor: " + String.format(Locale.US, "%.2f", bt.profitFactor), 14, true));
                     resCard.addView(createTextView("• أقصى تراجع (Max Drawdown): " + String.format(Locale.US, "%.1f%%", bt.maxDrawdown * 100), 14, false));
-                    resCard.addView(createTextView("• متوسط الصفحات الرابحة: $" + String.format(Locale.US, "%.2f", bt.avgWin), 14, false));
-                    resCard.addView(createTextView("• متوسط الصفحات الخاسرة: $" + String.format(Locale.US, "%.2f", bt.avgLoss), 14, false));
+                    resCard.addView(createTextView("• متوسط الصفقات الرابحة: $" + String.format(Locale.US, "%.2f", bt.avgWin), 14, false));
+                    resCard.addView(createTextView("• متوسط الصفقات الخاسرة: $" + String.format(Locale.US, "%.2f", bt.avgLoss), 14, false));
+                    resCard.addView(createTextView("• أكبر صفقة رابحة: $" + String.format(Locale.US, "%.2f", bt.largestWin), 14, false));
+                    resCard.addView(createTextView("• أكبر صفقة خاسرة: $" + String.format(Locale.US, "%.2f", bt.largestLoss), 14, false));
                     resCard.addView(createTextView("• أطول سلسلة خسائر متتالية: " + bt.longestLosingStreak, 14, false));
-                    resCard.addView(createTextView("• رأس المال النهائي: $" + String.format(Locale.US, "%.2f", bt.finalCapital), 16, true));
+                    resCard.addView(createTextView("• رأس المال الأولي: $" + String.format(Locale.US, "%.2f", bt.startCapital) + " -> النهائي: $" + String.format(Locale.US, "%.2f", bt.finalCapital), 16, true));
 
                     resCard.addView(createTextView("⚠️ تذكير: النتائج التاريخية هي لأغراض الدراسة ولا تعني بالضرورة تحقيق نفس الأرباح مستقبلًا.", 12, false));
                     content.addView(resCard);
@@ -836,103 +845,190 @@ String[] keys = {
                 runOnUiThread(() -> Toast.makeText(this, "خطأ في الاختبار: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         });
-    }// --- SCREEN 3.5: MARKET INTELLIGENCE ---
-void showMarketIntelligenceScreen() {
-    setupBaseLayout("market_intelligence");
+    }
 
-    LinearLayout card = createCardBox();
+    // --- SCREEN 3.5: MARKET INTELLIGENCE ---
+    void showMarketIntelligenceScreen() {
+        setupBaseLayout("market_intelligence");
 
-    TextView title = createTextView("🧠 ذكاء السوق", 22, true);
-    card.addView(title);
+        LinearLayout titleCard = createCardBox();
+        titleCard.addView(createTextView("🧠 ذكاء السوق والتحليل المتطور (Market Intelligence)", 20, true));
+        titleCard.addView(createTextView("محرك التحليل الفني الشامل، دراسة الاتجاه والزخم والسيولة والأنماط التاريخية.", 13, false));
+        content.addView(titleCard);
 
-    TextView subtitle = createTextView("تحليل فني متقدم للسوق والاتجاه والسيولة", 14, false);
-    subtitle.setTextColor(mutedColor);
-    card.addView(subtitle);
+        LinearLayout inputCard = createCardBox();
+        inputCard.addView(createTextView("⚙️ خيارات التحليل المتقدم", 16, true));
 
-    TextView status = createTextView("اختر السوق والفاصل الزمني ثم ابدأ التحليل", 15, true);
-    card.addView(status);
+        inputCard.addView(createTextView("الرمز (Symbol):", 13, true));
+        EditText symbolEd = createEditText("XAU/USD", "XAU/USD");
+        inputCard.addView(symbolEd);
 
-    EditText symbolInput = createEditText("رمز الأصل — مثال: XAU/USD", GOLD_SYMBOL);
-    card.addView(symbolInput);
+        inputCard.addView(createTextView("الفاصل الزمني (Interval: 5min, 15min, 1h, 4h):", 13, true));
+        EditText intervalEd = createEditText("15min", "15min");
+        inputCard.addView(intervalEd);
 
-    EditText intervalInput = createEditText("الفاصل — مثال: 15min", "15min");
-    card.addView(intervalInput);
+        inputCard.addView(createTextView("عدد الشموع (Candles Count):", 13, true));
+        EditText countEd = createEditText("150", "150");
+        inputCard.addView(countEd);
 
-    TextView indicatorsView = createTextView("", 14, false);
+        TextView intelStatus = createTextView("جاهز للتحليل. اضغط على الزر أدناه.", 13, false);
+        intelStatus.setTextColor(mutedColor);
 
-    Button analyzeButton = createButton("🔍 تحليل السوق", v -> {
-        String symbol = symbolInput.getText().toString().trim();
-        String interval = intervalInput.getText().toString().trim();
+        Button runIntelBtn = createButton("🔍 بدء تحليل ذكاء السوق", v -> {
+            String sym = symbolEd.getText().toString().trim();
+            if (sym.isEmpty()) sym = GOLD_SYMBOL;
+            String tf = intervalEd.getText().toString().trim();
+            if (tf.isEmpty()) tf = "15min";
+            int count = 150;
+            try { count = Integer.parseInt(countEd.getText().toString().trim()); } catch (Exception ignored) {}
 
-        if (symbol.isEmpty()) symbol = GOLD_SYMBOL;
-        if (interval.isEmpty()) interval = "15min";
+            runMarketIntelligenceAnalysis(sym, tf, count, intelStatus);
+        });
 
-        status.setText("⏳ جارٍ تحليل " + symbol + " — " + interval + "...");
-        status.setTextColor(secondaryColor);
+        inputCard.addView(runIntelBtn);
+        inputCard.addView(intelStatus);
+        content.addView(inputCard);
 
+        if (currentMarketIntel != null) {
+            displayMarketIntelligenceResult(currentMarketIntel);
+        } else {
+            LinearLayout infoCard = createCardBox();
+            infoCard.addView(createTextView("📊 المؤشرات والأنماط المفحوصة بمحرك الذكاء:", 15, true));
+            infoCard.addView(createTextView("• المتوسطات: SMA (20/50) + EMA (20/50/200)\n" +
+                    "• الزخم والتقلب: RSI (14) + MACD Histogram + ATR (14)\n" +
+                    "• النطاقات والسيولة: Bollinger Bands (20,2) + Relative Volume\n" +
+                    "• السلوك السعري: الدعم والمقاومة (S1/R1) + Breakout + Pullback\n" +
+                    "• التقييم الرقمي: Market Score من 0 إلى 100", 13, false));
+            content.addView(infoCard);
+        }
+    }
+
+    void runMarketIntelligenceAnalysis(String symbol, String interval, int count, TextView statusTv) {
         String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
         if (apiKey.isEmpty()) {
-            status.setText("⚠️ يرجى إدخال مفتاح Twelve Data API في الإعدادات أولًا.");
-            status.setTextColor(Color.YELLOW);
+            statusTv.setText("⚠️ يرجى إدخال مفتاح Twelve Data API في شاشة الإعدادات أولًا.");
+            statusTv.setTextColor(Color.YELLOW);
             return;
         }
 
-        final String finalSymbol = symbol;
-        final String finalInterval = interval;
+        statusTv.setText("⏳ جاري جلب وتحليل بيانات " + symbol + " (" + interval + ")...");
+        statusTv.setTextColor(secondaryColor);
 
         executor.submit(() -> {
             try {
-                List<Bar> bars = fetchTwelveData(finalSymbol, finalInterval, apiKey, 200);
-                if (bars == null || bars.isEmpty()) {
-                    throw new Exception("لم يتم استلام بيانات كافية من Twelve Data");
+                List<Bar> fetchBars = fetchTwelveData(symbol, interval, apiKey, count);
+                if (fetchBars == null || fetchBars.size() < 30) {
+                    throw new Exception("بيانات غير كافية للتحليل (أقل من 30 شمعة).");
                 }
 
                 List<MarketIntelligenceEngine.Bar> intelBars = new ArrayList<>();
-                for (Bar b : bars) {
+                for (Bar b : fetchBars) {
                     intelBars.add(new MarketIntelligenceEngine.Bar(b.o, b.h, b.l, b.c, b.v));
                 }
 
                 MarketIntelligenceEngine engine = new MarketIntelligenceEngine();
-                MarketIntelligenceEngine.Result result = engine.analyze(intelBars);
+                MarketIntelligenceEngine.Result res = engine.analyze(intelBars);
+                currentMarketIntel = res;
 
                 runOnUiThread(() -> {
-                    status.setText("✅ اكتمل تحليل " + finalSymbol + " بنجاح!");
-                    status.setTextColor(Color.GREEN);
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("\n📊 المؤشرات والنتائج الفنية:\n");
-                    sb.append("• الاتجاه: ").append(result.trend).append("\n");
-                    sb.append("• النمط: ").append(result.pattern).append("\n");
-                    sb.append(String.format(Locale.US, "• SMA 20: %.2f | SMA 50: %.2f\n", result.sma20, result.sma50));
-                    sb.append(String.format(Locale.US, "• EMA 20: %.2f | EMA 50: %.2f | EMA 200: %.2f\n", result.ema20, result.ema50, result.ema200));
-                    sb.append(String.format(Locale.US, "• RSI 14: %.2f\n", result.rsi14));
-                    sb.append(String.format(Locale.US, "• MACD Histogram: %.5f\n", result.macdHistogram));
-                    sb.append(String.format(Locale.US, "• ATR 14: %.5f\n", result.atr14));
-                    sb.append(String.format(Locale.US, "• Bollinger Bands (20,2): العلوي=%.2f | الأوسط=%.2f | السفلي=%.2f\n", result.bollingerUpper, result.bollingerMiddle, result.bollingerLower));
-                    sb.append(String.format(Locale.US, "• حجم التداول النسبي: %.2fx\n", result.relativeVolume));
-                    sb.append(String.format(Locale.US, "• الدعم: %.2f | المقاومة: %.2f\n", result.support, result.resistance));
-                    sb.append("• حالة الاختراق (Breakout): ").append(result.breakout ? "نعم 🚀" : "لا").append("\n");
-                    sb.append("• حالة الارتداد (Pullback): ").append(result.pullback ? "نعم 🟢" : "لا").append("\n\n");
-                    sb.append("🎯 درجة ذكاء السوق (Market Score): ").append(result.marketScore).append(" / 100\n\n");
-                    sb.append("📖 التفسير:\n").append(result.explanation);
-
-                    indicatorsView.setText(sb.toString());
-                    indicatorsView.setTextIsSelectable(true);
+                    statusTv.setText("✅ اكتمل تحليل ذكاء السوق بنجاح!");
+                    statusTv.setTextColor(Color.GREEN);
+                    showMarketIntelligenceScreen();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    status.setText("❌ خطأ أثناء التحليل: " + e.getMessage());
-                    status.setTextColor(Color.RED);
+                    statusTv.setText("❌ خطأ: " + e.getMessage());
+                    statusTv.setTextColor(Color.RED);
                 });
             }
         });
-    });
+    }
 
-    card.addView(analyzeButton);
-    card.addView(indicatorsView);
+    void displayMarketIntelligenceResult(MarketIntelligenceEngine.Result res) {
+        // 1. Market Score Header Card
+        LinearLayout scoreCard = createCardBox();
+        scoreCard.addView(createTextView("🎯 تقييم قوة السوق الرقمي (Market Score)", 16, true));
 
-    content.addView(card);
-}
+        TextView scoreTv = createTextView(res.marketScore + " / 100", 32, true);
+        if (res.marketScore >= 65) scoreTv.setTextColor(Color.GREEN);
+        else if (res.marketScore <= 35) scoreTv.setTextColor(Color.RED);
+        else scoreTv.setTextColor(Color.YELLOW);
+        scoreCard.addView(scoreTv);
+
+        scoreCard.addView(createTextView("السعر الحالي: $" + String.format(Locale.US, "%.2f", res.currentPrice) + " | الاتجاه: " + res.trend, 14, true));
+        content.addView(scoreCard);
+
+        // 2. Educational Trading Signal Card
+        LinearLayout signalCard = createCardBox();
+        signalCard.addView(createTextView("🚦 إشارة ذكاء السوق التعليمية", 16, true));
+
+        TextView sigTv = createTextView(res.signal, 24, true);
+        if (res.signal.contains("BUY")) sigTv.setTextColor(Color.GREEN);
+        else if (res.signal.contains("SELL")) sigTv.setTextColor(Color.RED);
+        else if (res.signal.contains("WAIT")) sigTv.setTextColor(Color.YELLOW);
+        else sigTv.setTextColor(Color.GRAY);
+        signalCard.addView(sigTv);
+
+        signalCard.addView(createTextView("نسبة الثقة بالتوافق: " + String.format(Locale.US, "%.0f%%", res.confidenceScore), 14, true));
+
+        if (res.signal.contains("SETUP")) {
+            signalCard.addView(createTextView("• سعر الدخول: $" + String.format(Locale.US, "%.2f", res.entryPrice), 13, false));
+            signalCard.addView(createTextView("• وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", res.stopLoss), 13, true));
+            signalCard.addView(createTextView("• الهدف الأول (TP1): $" + String.format(Locale.US, "%.2f", res.takeProfit1), 13, false));
+            signalCard.addView(createTextView("• الهدف الثاني (TP2): $" + String.format(Locale.US, "%.2f", res.takeProfit2), 13, false));
+
+            Button forwardBtn = createButton("📝 تنفيذ الصفقة التجريبية في المحفظة", v -> {
+                AnalysisResult converted = new AnalysisResult();
+                converted.currentPrice = res.currentPrice;
+                converted.signal = res.signal;
+                converted.confidenceScore = res.confidenceScore / 100.0;
+                converted.entryPrice = res.entryPrice;
+                converted.stopLoss = res.stopLoss;
+                converted.takeProfit1 = res.takeProfit1;
+                converted.takeProfit2 = res.takeProfit2;
+                converted.trend = res.trend;
+                converted.htfTrend = res.trend;
+                converted.rsi = res.rsi14;
+                converted.rsiStatus = res.rsi14 > 70 ? "Overbought" : (res.rsi14 < 30 ? "Oversold" : "Neutral");
+                converted.macdHist = res.macdHistogram;
+                converted.ema20 = res.ema20;
+                converted.ema50 = res.ema50;
+                converted.ema200 = res.ema200;
+                converted.atr = res.atr14;
+                converted.volatilityStatus = res.volatility;
+                converted.support = res.support;
+                converted.resistance = res.resistance;
+                converted.arabicExplanation = res.explanation;
+
+                executePaperTradeFromSignal(converted);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 10, 0, 0);
+            signalCard.addView(forwardBtn, lp);
+        }
+        content.addView(signalCard);
+
+        // 3. Technical Indicators Grid Card
+        LinearLayout indCard = createCardBox();
+        indCard.addView(createTextView("📊 المؤشرات التقنية وتحليل السيولة", 16, true));
+        indCard.addView(createTextView("• RSI (14): " + String.format(Locale.US, "%.1f", res.rsi14), 13, false));
+        indCard.addView(createTextView("• MACD Hist: " + String.format(Locale.US, "%.2f", res.macdHistogram) + " (" + res.momentum + ")", 13, false));
+        indCard.addView(createTextView("• ATR (14): $" + String.format(Locale.US, "%.2f", res.atr14) + " (" + res.volatility + ")", 13, false));
+        indCard.addView(createTextView("• المتوسطات المتحركة: SMA20=$" + String.format(Locale.US, "%.1f", res.sma20) + " | SMA50=$" + String.format(Locale.US, "%.1f", res.sma50), 13, false));
+        indCard.addView(createTextView("• المتوسطات الأسية: EMA20=$" + String.format(Locale.US, "%.1f", res.ema20) + " | EMA50=$" + String.format(Locale.US, "%.1f", res.ema50) + " | EMA200=$" + String.format(Locale.US, "%.1f", res.ema200), 13, false));
+        indCard.addView(createTextView("• Bollinger Bands: Upper=$" + String.format(Locale.US, "%.1f", res.bollingerUpper) + " | Mid=$" + String.format(Locale.US, "%.1f", res.bollingerMiddle) + " | Lower=$" + String.format(Locale.US, "%.1f", res.bollingerLower), 13, false));
+        indCard.addView(createTextView("• حجم التداول النسبي (Relative Volume): " + String.format(Locale.US, "%.2fx", res.relativeVolume), 13, false));
+        indCard.addView(createTextView("• مستويات الدعم والمقاومة: Resistance=$" + String.format(Locale.US, "%.2f", res.resistance) + " | Support=$" + String.format(Locale.US, "%.2f", res.support), 13, false));
+        indCard.addView(createTextView("• حالة Breakout: " + (res.breakout ? "نعم ⚡" : "لا") + " | حالة Pullback: " + (res.pullback ? "نعم 🔄" : "لا"), 13, false));
+        indCard.addView(createTextView("• التشخيص الهيكلي: " + res.pattern, 13, true));
+        content.addView(indCard);
+
+        // 4. Detailed Rationale & Explanation Card
+        LinearLayout rationaleCard = createCardBox();
+        rationaleCard.addView(createTextView("📖 التفسير والشرح العربي التفصيلي", 16, true));
+        rationaleCard.addView(createTextView(res.explanation, 13, false));
+        content.addView(rationaleCard);
+    }
 
     // --- SCREEN 4: AI ASSISTANT ---
     void showAiAssistantScreen() {

@@ -7,16 +7,28 @@ public class BacktestEngine {
 
     public static class BacktestResult {
         public int totalTrades;
-        public double winRate, lossRate;
-        public double grossProfit, grossLoss, profitFactor, maxDrawdown;
-        public double avgWin, avgLoss;
+        public int winningTrades;
+        public int losingTrades;
+        public double winRate; // 0 to 1
+        public double lossRate; // 0 to 1
+        public double grossProfit;
+        public double grossLoss;
+        public double netProfit;
+        public double profitFactor;
+        public double maxDrawdown; // 0 to 1
+        public double avgWin;
+        public double avgLoss;
+        public double largestWin;
+        public double largestLoss;
         public int longestLosingStreak;
+        public double startCapital;
         public double finalCapital;
     }
 
     public static BacktestResult runGoldBacktest(List<GoldAnalysisEngine.Bar> bars, SharedPreferences prefs) {
         BacktestResult bt = new BacktestResult();
         double startCap = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_CAPITAL, "10000"));
+        bt.startCapital = startCap;
         double cash = startCap, peak = cash;
         int wins = 0, losses = 0;
         int currentLossStreak = 0, maxLossStreak = 0;
@@ -43,6 +55,7 @@ public class BacktestEngine {
                         double pnl = atr * 2.0 * 10;
                         cash += pnl;
                         bt.grossProfit += pnl;
+                        if (pnl > bt.largestWin) bt.largestWin = pnl;
                         currentLossStreak = 0;
                         i = j;
                         break;
@@ -51,6 +64,7 @@ public class BacktestEngine {
                         double pnl = atr * 1.5 * 10;
                         cash -= pnl;
                         bt.grossLoss += pnl;
+                        if (pnl > bt.largestLoss) bt.largestLoss = pnl;
                         currentLossStreak++;
                         if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
                         i = j;
@@ -59,11 +73,14 @@ public class BacktestEngine {
                 }
             }
             peak = Math.max(peak, cash);
-            double dd = (peak - cash) / peak;
+            double dd = peak > 0 ? (peak - cash) / peak : 0;
             if (dd > bt.maxDrawdown) bt.maxDrawdown = dd;
         }
 
+        bt.winningTrades = wins;
+        bt.losingTrades = losses;
         bt.finalCapital = cash;
+        bt.netProfit = cash - startCap;
         bt.winRate = bt.totalTrades > 0 ? (double) wins / bt.totalTrades : 0;
         bt.lossRate = bt.totalTrades > 0 ? (double) losses / bt.totalTrades : 0;
         bt.profitFactor = bt.grossLoss > 0 ? bt.grossProfit / bt.grossLoss : (bt.grossProfit > 0 ? 99.0 : 0);
