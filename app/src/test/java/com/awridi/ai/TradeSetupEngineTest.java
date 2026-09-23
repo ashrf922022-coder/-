@@ -46,7 +46,7 @@ public class TradeSetupEngineTest {
 
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
 
-        assertTrue("BUY setup should be valid", setup.valid);
+        assertTrue("BUY setup evaluated by engine should be valid", setup.valid);
         assertEquals(TradeSetup.Direction.BUY, setup.direction);
         assertEquals(2680.0, setup.entryPrice, 0.001);
         assertTrue(setup.stopLoss < setup.entryPrice);
@@ -69,7 +69,7 @@ public class TradeSetupEngineTest {
 
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
 
-        assertTrue("SELL setup should be valid", setup.valid);
+        assertTrue("SELL setup evaluated by engine should be valid", setup.valid);
         assertEquals(TradeSetup.Direction.SELL, setup.direction);
         assertEquals(2520.0, setup.entryPrice, 0.001);
         assertTrue(setup.stopLoss > setup.entryPrice);
@@ -77,7 +77,7 @@ public class TradeSetupEngineTest {
         assertTrue(setup.riskRewardRatio >= 1.5);
     }
 
-    // 3. BUY with invalid Stop Loss (SL >= Entry)
+    // 3. BUY with invalid Stop Loss (Engine rejects when SL >= Entry due to support above entry)
     @Test
     public void testBuyWithInvalidStopLoss() {
         TradingDecisionResult result = new TradingDecisionResult();
@@ -86,19 +86,16 @@ public class TradeSetupEngineTest {
         result.confidence = 80.0;
         result.currentPrice = 2650.0;
         result.atrValue = 3.0;
+        result.support = 2700.0; // Support higher than entry!
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 50);
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
-        // Force invalid SL manually to test validation
-        setup.stopLoss = 2660.0; // SL > Entry
-        if (setup.direction == TradeSetup.Direction.BUY && setup.stopLoss >= setup.entryPrice) {
-            setup.valid = false;
-        }
 
-        assertFalse("BUY setup with SL >= Entry must be invalid", setup.valid);
+        assertFalse("Engine itself must reject BUY setup when SL >= Entry", setup.valid);
+        assertTrue("Explanation must contain Arabic boundary reason", setup.explanation.contains("وقف الخسارة يجب أن يكون أقل"));
     }
 
-    // 4. SELL with invalid Stop Loss (SL <= Entry)
+    // 4. SELL with invalid Stop Loss (Engine rejects when SL <= Entry due to resistance below entry)
     @Test
     public void testSellWithInvalidStopLoss() {
         TradingDecisionResult result = new TradingDecisionResult();
@@ -107,18 +104,16 @@ public class TradeSetupEngineTest {
         result.confidence = 80.0;
         result.currentPrice = 2650.0;
         result.atrValue = 3.0;
+        result.resistance = 2600.0; // Resistance lower than entry!
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(false, 50);
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
-        setup.stopLoss = 2640.0; // SL < Entry for SELL
-        if (setup.direction == TradeSetup.Direction.SELL && setup.stopLoss <= setup.entryPrice) {
-            setup.valid = false;
-        }
 
-        assertFalse("SELL setup with SL <= Entry must be invalid", setup.valid);
+        assertFalse("Engine itself must reject SELL setup when SL <= Entry", setup.valid);
+        assertTrue("Explanation must contain Arabic boundary reason", setup.explanation.contains("وقف الخسارة يجب أن يكون أعلى"));
     }
 
-    // 5. BUY with invalid Take Profit (TP <= Entry)
+    // 5. BUY with invalid Take Profit (Engine rejects when TP <= Entry due to resistance below entry)
     @Test
     public void testBuyWithInvalidTakeProfit() {
         TradingDecisionResult result = new TradingDecisionResult();
@@ -127,18 +122,16 @@ public class TradeSetupEngineTest {
         result.confidence = 80.0;
         result.currentPrice = 2650.0;
         result.atrValue = 3.0;
+        result.resistance = 2640.0; // Resistance lower than entry!
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 50);
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
-        setup.takeProfit = 2640.0; // TP < Entry for BUY
-        if (setup.direction == TradeSetup.Direction.BUY && setup.takeProfit <= setup.entryPrice) {
-            setup.valid = false;
-        }
 
-        assertFalse("BUY setup with TP <= Entry must be invalid", setup.valid);
+        assertFalse("Engine itself must reject BUY setup when TP <= Entry", setup.valid);
+        assertTrue("Explanation must contain Arabic boundary reason", setup.explanation.contains("هدف الربح يجب أن يكون أعلى"));
     }
 
-    // 6. SELL with invalid Take Profit (TP >= Entry)
+    // 6. SELL with invalid Take Profit (Engine rejects when TP >= Entry due to support above entry)
     @Test
     public void testSellWithInvalidTakeProfit() {
         TradingDecisionResult result = new TradingDecisionResult();
@@ -147,15 +140,13 @@ public class TradeSetupEngineTest {
         result.confidence = 80.0;
         result.currentPrice = 2650.0;
         result.atrValue = 3.0;
+        result.support = 2660.0; // Support higher than entry!
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(false, 50);
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
-        setup.takeProfit = 2660.0; // TP > Entry for SELL
-        if (setup.direction == TradeSetup.Direction.SELL && setup.takeProfit >= setup.entryPrice) {
-            setup.valid = false;
-        }
 
-        assertFalse("SELL setup with TP >= Entry must be invalid", setup.valid);
+        assertFalse("Engine itself must reject SELL setup when TP >= Entry", setup.valid);
+        assertTrue("Explanation must contain Arabic boundary reason", setup.explanation.contains("هدف الربح يجب أن يكون أقل"));
     }
 
     // 7. Valid Risk/Reward Ratio
@@ -164,7 +155,7 @@ public class TradeSetupEngineTest {
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 100);
         TradeSetup setup = setupEngine.createTradeSetup(bars);
         if (setup.valid) {
-            assertTrue("R:R ratio must be >= 1.5", setup.riskRewardRatio >= 1.5);
+            assertTrue("Engine-evaluated R:R ratio must be >= 1.5", setup.riskRewardRatio >= 1.5);
         }
     }
 
@@ -178,30 +169,29 @@ public class TradeSetupEngineTest {
         result.currentPrice = 2650.0;
         result.atrValue = 10.0; // large SL distance
         result.support = 2600.0;
-        result.resistance = 2660.0; // small TP distance
+        result.resistance = 2655.0; // small TP distance
 
-        // Force a small RR scenario
-        TradeSetup setup = setupEngine.createTradeSetup(result, createTrendBars(true, 50));
-        setupEngine.setMinRiskRewardRatio(2.5); // Increase minimum required RR
-        setup = setupEngine.createTradeSetup(result, createTrendBars(true, 50));
+        TradeSetupEngine customEngine = new TradeSetupEngine(3.0); // Required RR is 3.0
+        TradeSetup setup = customEngine.createTradeSetup(result, createTrendBars(true, 50));
 
-        assertFalse("Setup with RR below threshold must be invalid", setup.valid);
+        assertFalse("Engine must reject setup with RR below minimum threshold", setup.valid);
     }
 
-    // 9. Risk = 0
+    // 9. Improved Risk = 0 test
     @Test
-    public void testRiskEqualsZero() {
+    public void testRiskEqualsZeroHandling() {
         TradingDecisionResult result = new TradingDecisionResult();
         result.decision = TradingDecisionResult.Decision.BUY;
         result.signalQuality = "HIGH";
         result.confidence = 80.0;
         result.currentPrice = 2650.0;
-        result.atrValue = 0.0; // leads to Risk = 0
+        result.atrValue = 0.00000001; // Leads to riskDistance = 0.0
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 50);
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
 
         assertFalse("Risk = 0 must render setup invalid without crashing", setup.valid);
+        assertTrue("Risk distance should be non-positive or negligible", setup.riskDistance <= 0.0001);
     }
 
     // 10. HIGH Signal Quality
@@ -323,7 +313,6 @@ public class TradeSetupEngineTest {
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
 
         assertEquals(MarketRegimeResult.Regime.HIGH_VOLATILITY, setup.marketRegime);
-        // SL distance should be wider for high volatility
         assertTrue(setup.riskDistance >= 6.0 * 2.0);
     }
 
@@ -361,7 +350,6 @@ public class TradeSetupEngineTest {
         TradeSetup setup = setupEngine.createTradeSetup(result, bars);
 
         assertEquals(MarketRegimeResult.Regime.TRANSITION, setup.marketRegime);
-        // Confidence should be reduced
         assertTrue(setup.confidence <= 50.0);
     }
 
@@ -373,22 +361,36 @@ public class TradeSetupEngineTest {
 
         TradeSetup setup2 = setupEngine.createTradeSetup(new ArrayList<>());
         assertFalse("Empty bars list should return invalid setup", setup2.valid);
+
+        TradeSetup setup3 = setupEngine.createTradeSetup(null, new ArrayList<>());
+        assertFalse("Null decisionResult should return invalid setup", setup3.valid);
     }
 
     // 20. Invalid Data Handling (NaN / Infinity)
     @Test
-    public void testInvalidDataHandlingNaN() {
-        TradingDecisionResult result = new TradingDecisionResult();
-        result.decision = TradingDecisionResult.Decision.BUY;
-        result.signalQuality = "HIGH";
-        result.confidence = 80.0;
-        result.currentPrice = Double.NaN;
-        result.atrValue = 3.0;
+    public void testInvalidDataHandlingNaNAndInfinity() {
+        TradingDecisionResult resultNaN = new TradingDecisionResult();
+        resultNaN.decision = TradingDecisionResult.Decision.BUY;
+        resultNaN.signalQuality = "HIGH";
+        resultNaN.confidence = 80.0;
+        resultNaN.currentPrice = Double.NaN;
+        resultNaN.atrValue = 3.0;
 
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 50);
-        TradeSetup setup = setupEngine.createTradeSetup(result, bars);
+        TradeSetup setupNaN = setupEngine.createTradeSetup(resultNaN, bars);
 
-        assertFalse("NaN entry price must render setup invalid", setup.valid);
+        assertFalse("NaN entry price must render setup invalid without crashing", setupNaN.valid);
+
+        TradingDecisionResult resultInf = new TradingDecisionResult();
+        resultInf.decision = TradingDecisionResult.Decision.BUY;
+        resultInf.signalQuality = "HIGH";
+        resultInf.confidence = 80.0;
+        resultInf.currentPrice = 2650.0;
+        resultInf.atrValue = Double.POSITIVE_INFINITY;
+
+        TradeSetup setupInf = setupEngine.createTradeSetup(resultInf, bars);
+
+        assertFalse("Infinity ATR must render setup invalid without crashing", setupInf.valid);
     }
 
     // 21. BUY / SELL Direction Consistency
@@ -409,16 +411,13 @@ public class TradeSetupEngineTest {
     public void testLookAheadBiasProtection() {
         List<MarketIntelligenceEngine.Bar> bars = createTrendBars(true, 100);
 
-        // Evaluate setup at candle index 60
         TradeSetup setup1 = setupEngine.evaluateAtCandle(bars, 60);
 
-        // Add 40 future candles with wild price swings after index 60
         List<MarketIntelligenceEngine.Bar> extendedBars = new ArrayList<>(bars);
         for (int i = 0; i < 40; i++) {
             extendedBars.add(new MarketIntelligenceEngine.Bar(3000 + i, 3100 + i, 2900 + i, 3050 + i, 5000));
         }
 
-        // Evaluate again at same targetIndex 60
         TradeSetup setup2 = setupEngine.evaluateAtCandle(extendedBars, 60);
 
         assertEquals("Entry price at candle 60 must be identical despite future data", setup1.entryPrice, setup2.entryPrice, 0.0001);
@@ -441,5 +440,21 @@ public class TradeSetupEngineTest {
         assertEquals(setupA.stopLoss, setupB.stopLoss, 0.0001);
         assertEquals(setupA.takeProfit, setupB.takeProfit, 0.0001);
         assertEquals(setupA.riskRewardRatio, setupB.riskRewardRatio, 0.0001);
+    }
+
+    // 24. Invalid minRiskRewardRatio Sanitization Handling
+    @Test
+    public void testInvalidMinRiskRewardRatioSanitization() {
+        TradeSetupEngine engineZero = new TradeSetupEngine(0.0);
+        assertEquals("Zero minRiskRewardRatio must fall back to 1.5", 1.5, engineZero.getMinRiskRewardRatio(), 0.001);
+
+        TradeSetupEngine engineNeg = new TradeSetupEngine(-2.0);
+        assertEquals("Negative minRiskRewardRatio must fall back to 1.5", 1.5, engineNeg.getMinRiskRewardRatio(), 0.001);
+
+        TradeSetupEngine engineNaN = new TradeSetupEngine(Double.NaN);
+        assertEquals("NaN minRiskRewardRatio must fall back to 1.5", 1.5, engineNaN.getMinRiskRewardRatio(), 0.001);
+
+        TradeSetupEngine engineInf = new TradeSetupEngine(Double.POSITIVE_INFINITY);
+        assertEquals("Infinity minRiskRewardRatio must fall back to 1.5", 1.5, engineInf.getMinRiskRewardRatio(), 0.001);
     }
 }

@@ -6,14 +6,15 @@ import java.util.Locale;
 
 public class TradeSetupEngine {
 
-    private double minRiskRewardRatio = 1.5;
+    public static final double DEFAULT_MIN_RR = 1.5;
+    private double minRiskRewardRatio = DEFAULT_MIN_RR;
 
     public TradeSetupEngine() {
-        this.minRiskRewardRatio = 1.5;
+        this.minRiskRewardRatio = DEFAULT_MIN_RR;
     }
 
     public TradeSetupEngine(double minRiskRewardRatio) {
-        this.minRiskRewardRatio = minRiskRewardRatio;
+        setMinRiskRewardRatio(minRiskRewardRatio);
     }
 
     public double getMinRiskRewardRatio() {
@@ -21,7 +22,11 @@ public class TradeSetupEngine {
     }
 
     public void setMinRiskRewardRatio(double minRiskRewardRatio) {
-        this.minRiskRewardRatio = minRiskRewardRatio;
+        if (Double.isNaN(minRiskRewardRatio) || Double.isInfinite(minRiskRewardRatio) || minRiskRewardRatio <= 0.0) {
+            this.minRiskRewardRatio = DEFAULT_MIN_RR;
+        } else {
+            this.minRiskRewardRatio = minRiskRewardRatio;
+        }
     }
 
     /**
@@ -54,6 +59,9 @@ public class TradeSetupEngine {
      */
     public TradeSetup createTradeSetup(TradingDecisionResult decisionResult, List<MarketIntelligenceEngine.Bar> bars) {
         TradeSetup setup = new TradeSetup();
+
+        // Ensure safe minRiskRewardRatio value
+        setMinRiskRewardRatio(this.minRiskRewardRatio);
 
         // 1. Check for null or invalid inputs
         if (decisionResult == null) {
@@ -125,12 +133,45 @@ public class TradeSetupEngine {
 
         setup.entryPrice = entry;
 
+        // Check for invalid Support/Resistance boundary levels relative to Entry
+        if (setup.direction == TradeSetup.Direction.BUY) {
+            if (support >= entry) {
+                setup.valid = false;
+                String reason = "وقف الخسارة يجب أن يكون أقل من سعر الدخول لصفقات الشراء (BUY SL < Entry). الدعم المفترض (" + support + ") أعلى من أو يساوي الدخول (" + entry + ").";
+                setup.conflictingFactors.add(reason);
+                setup.explanation = buildExplanation(setup, reason);
+                return setup;
+            }
+            if (resistance > 0 && resistance <= entry) {
+                setup.valid = false;
+                String reason = "هدف الربح يجب أن يكون أعلى من سعر الدخول لصفقات الشراء (BUY TP > Entry). المقاومة المفترضة (" + resistance + ") أقل من أو تساوي الدخول (" + entry + ").";
+                setup.conflictingFactors.add(reason);
+                setup.explanation = buildExplanation(setup, reason);
+                return setup;
+            }
+        } else if (setup.direction == TradeSetup.Direction.SELL) {
+            if (resistance > 0 && resistance <= entry) {
+                setup.valid = false;
+                String reason = "وقف الخسارة يجب أن يكون أعلى من سعر الدخول لصفقات البيع (SELL SL > Entry). المقاومة المفترضة (" + resistance + ") أقل من أو تساوي الدخول (" + entry + ").";
+                setup.conflictingFactors.add(reason);
+                setup.explanation = buildExplanation(setup, reason);
+                return setup;
+            }
+            if (support >= entry) {
+                setup.valid = false;
+                String reason = "هدف الربح يجب أن يكون أقل من سعر الدخول لصفقات البيع (SELL TP < Entry). الدعم المفترض (" + support + ") أعلى من أو يساوي الدخول (" + entry + ").";
+                setup.conflictingFactors.add(reason);
+                setup.explanation = buildExplanation(setup, reason);
+                return setup;
+            }
+        }
+
         // 6. Calculate Stop Loss & Take Profit based on Direction, Support/Resistance, and ATR
         double atrMultiplierSL = 1.5;
         double atrMultiplierTP = 2.25;
 
         if (setup.marketRegime == MarketRegimeResult.Regime.HIGH_VOLATILITY) {
-            atrMultiplierSL = 2.0; // Wider stop loss for high volatility
+            atrMultiplierSL = 2.0;
             atrMultiplierTP = 3.0;
         } else if (setup.marketRegime == MarketRegimeResult.Regime.LOW_VOLATILITY) {
             atrMultiplierSL = 1.2;
@@ -138,7 +179,6 @@ public class TradeSetupEngine {
         }
 
         if (setup.direction == TradeSetup.Direction.BUY) {
-            // Stop Loss logic for BUY:
             double calculatedSL = entry - (atr * atrMultiplierSL);
             if (support > 0 && support < entry) {
                 double supportSL = support - (atr * 0.2);
@@ -148,7 +188,6 @@ public class TradeSetupEngine {
             }
             setup.stopLoss = calculatedSL;
 
-            // Take Profit logic for BUY:
             double calculatedTP = entry + (atr * atrMultiplierTP);
             if (resistance > entry) {
                 double resTP = resistance - (atr * 0.2);
@@ -159,7 +198,6 @@ public class TradeSetupEngine {
             setup.takeProfit = calculatedTP;
 
         } else if (setup.direction == TradeSetup.Direction.SELL) {
-            // Stop Loss logic for SELL:
             double calculatedSL = entry + (atr * atrMultiplierSL);
             if (resistance > entry) {
                 double resSL = resistance + (atr * 0.2);
@@ -169,7 +207,6 @@ public class TradeSetupEngine {
             }
             setup.stopLoss = calculatedSL;
 
-            // Take Profit logic for SELL:
             double calculatedTP = entry - (atr * atrMultiplierTP);
             if (support > 0 && support < entry) {
                 double supTP = support + (atr * 0.2);
@@ -231,7 +268,7 @@ public class TradeSetupEngine {
             setup.rewardDistance = setup.entryPrice - setup.takeProfit;
         }
 
-        if (setup.riskDistance <= 0 || Double.isNaN(setup.riskDistance) || Double.isInfinite(setup.riskDistance)) {
+        if (setup.riskDistance <= 0.0000001 || Double.isNaN(setup.riskDistance) || Double.isInfinite(setup.riskDistance)) {
             setup.valid = false;
             String reason = "مسافة المخاطرة غير صالحة أو تساوي الصفر (Risk <= 0).";
             setup.conflictingFactors.add(reason);
@@ -242,11 +279,11 @@ public class TradeSetupEngine {
         setup.riskRewardRatio = setup.rewardDistance / setup.riskDistance;
 
         // 9. Minimum Risk/Reward Validation
-        if (setup.riskRewardRatio < minRiskRewardRatio) {
+        if (setup.riskRewardRatio < this.minRiskRewardRatio) {
             setup.valid = false;
             String reason = String.format(Locale.US,
                     "نسبة المخاطرة إلى العائد (%.2f) أقل من الحد الأدنى المقبول (%.2f).",
-                    setup.riskRewardRatio, minRiskRewardRatio);
+                    setup.riskRewardRatio, this.minRiskRewardRatio);
             setup.conflictingFactors.add(reason);
             setup.explanation = buildExplanation(setup, reason);
             return setup;
