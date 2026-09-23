@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
 
     // Current Analysis Caches
     GoldAnalysisEngine.AnalysisResult currentAnalysis = null;
-    MarketIntelligenceEngine.Result currentMiResult = null;
+    TradingDecisionEngine.TradingDecisionResult currentDecisionResult = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -412,7 +412,6 @@ public class MainActivity extends Activity {
         titleCard.addView(createTextView("نظام متكامل لمتابعة رأس المال، حدود المخاطرة اليومية، وحماية الرصيد.", 13, false));
         content.addView(titleCard);
 
-        // Daily Risk Warnings
         if (sum.isDailyLossExceeded || sum.isDailyTradesExceeded) {
             LinearLayout warnCard = createCardBox();
             GradientDrawable wGd = new GradientDrawable();
@@ -438,7 +437,6 @@ public class MainActivity extends Activity {
             content.addView(warnCard);
         }
 
-        // 1. Portfolio Dashboard Section
         LinearLayout dashCard = createCardBox();
         dashCard.addView(createTextView("📊 1. رأس المال والرصيد (Capital Dashboard)", 16, true));
 
@@ -471,7 +469,6 @@ public class MainActivity extends Activity {
 
         content.addView(dashCard);
 
-        // 2. Risk Management Settings Section
         LinearLayout capMgmtCard = createCardBox();
         capMgmtCard.addView(createTextView("⚙️ 2. إعدادات إدارة المخاطر (Risk Settings)", 16, true));
 
@@ -524,7 +521,6 @@ public class MainActivity extends Activity {
 
         content.addView(capMgmtCard);
 
-        // Load All Trades
         List<PortfolioManager.PortfolioTrade> allTrades = PortfolioManager.loadTrades(prefs);
         List<PortfolioManager.PortfolioTrade> openTrades = new ArrayList<>();
         List<PortfolioManager.PortfolioTrade> closedTrades = new ArrayList<>();
@@ -534,7 +530,6 @@ public class MainActivity extends Activity {
             else closedTrades.add(t);
         }
 
-        // 3. Open Trades Section
         LinearLayout openTradesCard = createCardBox();
         openTradesCard.addView(createTextView("🔓 3. الصفقات المفتوحة (Open Trades)", 16, true));
 
@@ -576,7 +571,6 @@ public class MainActivity extends Activity {
         }
         content.addView(openTradesCard);
 
-        // 4. Trade History Section
         LinearLayout historyCard = createCardBox();
         historyCard.addView(createTextView("📜 4. سجل الصفقات المغلقة (Trade History Log)", 16, true));
 
@@ -606,7 +600,6 @@ public class MainActivity extends Activity {
         }
         content.addView(historyCard);
 
-        // 5. Real Statistics Section
         LinearLayout statCard = createCardBox();
         statCard.addView(createTextView("📈 5. التحليلات والإحصائيات الحقيقية (Real Performance Statistics)", 16, true));
 
@@ -623,7 +616,6 @@ public class MainActivity extends Activity {
 
         content.addView(statCard);
 
-        // 6. Capital History Operations Log Section
         LinearLayout capHistCard = createCardBox();
         capHistCard.addView(createTextView("🏦 6. سجل حماية رأس المال والعمليات (Capital Protection Log)", 16, true));
 
@@ -645,7 +637,6 @@ public class MainActivity extends Activity {
         content.addView(capHistCard);
     }
 
-    // Modal Dialog for Trade Details
     void showTradeDetailModal(PortfolioManager.PortfolioTrade t) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LinearLayout box = createCardBox();
@@ -882,17 +873,17 @@ public class MainActivity extends Activity {
         });
     }
 
-    // --- SCREEN 3.5: MARKET INTELLIGENCE ---
+    // --- SCREEN 3.5: MARKET INTELLIGENCE & TRADING DECISION ---
     void showMarketIntelligenceScreen() {
         setupBaseLayout("market_intelligence");
 
         LinearLayout titleCard = createCardBox();
-        titleCard.addView(createTextView("🧠 ذكاء السوق (Market Intelligence)", 20, true));
-        titleCard.addView(createTextView("تحليل فني متقدم وشامل للاتجاه، قوة الاتجاه، الزخم، التقلب، وتقييم المؤشرات.", 13, false));
+        titleCard.addView(createTextView("🧠 ذكاء السوق ومحرك القرار (Trading Decision Engine)", 20, true));
+        titleCard.addView(createTextView("تحليل فني متكامل يدمج الاتجاه والزخم والتقلب والهيكل السعري لإصدار قرار التداول.", 13, false));
         content.addView(titleCard);
 
         LinearLayout inputCard = createCardBox();
-        inputCard.addView(createTextView("🔍 خيارات تحليل السوق", 16, true));
+        inputCard.addView(createTextView("🔍 خيارات تحليل أصل الذهب", 16, true));
 
         inputCard.addView(createTextView("رمز الأصل:", 13, true));
         EditText symEd = createEditText("رمز الأصل...", GOLD_SYMBOL);
@@ -902,15 +893,15 @@ public class MainActivity extends Activity {
         EditText intEd = createEditText("الفاصل الزمني...", "15min");
         inputCard.addView(intEd);
 
-        TextView miStatus = createTextView("اضغط على الزر أدناه لتشغيل محرك ذكاء السوق.", 13, false);
+        TextView miStatus = createTextView("اضغط على الزر أدناه لتشغيل محرك القرار ذكاء السوق.", 13, false);
         miStatus.setTextColor(mutedColor);
 
-        Button miAnalyzeBtn = createButton("🔍 تحليل ذكاء السوق الآن", v -> {
+        Button miAnalyzeBtn = createButton("🔍 تشغيل محرك القرار والتداول الآن", v -> {
             String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
             String interval = intEd.getText().toString().trim();
             if (interval.isEmpty()) interval = "15min";
 
-            miStatus.setText("⏳ جارٍ تشغيل تحليل ذكاء السوق...");
+            miStatus.setText("⏳ جارٍ تشغيل Trading Decision Engine...");
             miStatus.setTextColor(secondaryColor);
 
             final String tf = interval;
@@ -935,12 +926,12 @@ public class MainActivity extends Activity {
                         miBars = generateFallbackMiBars(150);
                     }
 
-                    MarketIntelligenceEngine miEngine = new MarketIntelligenceEngine();
-                    MarketIntelligenceEngine.Result miRes = miEngine.analyze(miBars);
-                    currentMiResult = miRes;
+                    TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
+                    TradingDecisionEngine.TradingDecisionResult decisionRes = decisionEngine.evaluateDecision(miBars, GOLD_SYMBOL);
+                    currentDecisionResult = decisionRes;
 
                     runOnUiThread(() -> {
-                        miStatus.setText("✅ اكتمل تحليل ذكاء السوق بنجاح!");
+                        miStatus.setText("✅ اكتمل تحليل قرار التداول بنجاح!");
                         miStatus.setTextColor(Color.GREEN);
                         showMarketIntelligenceScreen();
                     });
@@ -957,96 +948,72 @@ public class MainActivity extends Activity {
         inputCard.addView(miStatus);
         content.addView(inputCard);
 
-        if (currentMiResult != null) {
-            displayMarketIntelligenceResult(currentMiResult);
+        if (currentDecisionResult != null) {
+            displayDecisionResult(currentDecisionResult);
         }
     }
 
-    void displayMarketIntelligenceResult(MarketIntelligenceEngine.Result r) {
-        // 1. Overview Card
-        LinearLayout overviewCard = createCardBox();
-        overviewCard.addView(createTextView("📊 1. ملخص ذكاء السوق", 18, true));
-        overviewCard.addView(createTextView("• الاتجاه العام: " + r.trend, 14, true));
-        overviewCard.addView(createTextView("• قوة الاتجاه: " + r.trendStrength, 14, false));
-        overviewCard.addView(createTextView("• الزخم: " + r.momentum, 14, false));
-        overviewCard.addView(createTextView("• التقلب (ATR): " + r.volatility, 14, false));
-        overviewCard.addView(createTextView("• الدعم والمقاومة: S1=$" + String.format(Locale.US, "%.2f", r.support) + " | R1=$" + String.format(Locale.US, "%.2f", r.resistance), 14, false));
-        overviewCard.addView(createTextView("• حالة السوق: " + r.marketState, 14, true));
+    void displayDecisionResult(TradingDecisionEngine.TradingDecisionResult r) {
+        // 1. Decision & Confidence Badge Card
+        LinearLayout decisionCard = createCardBox();
+        decisionCard.addView(createTextView("🎯 قرار التداول النهائي (Trading Decision Engine)", 18, true));
 
-        TextView scoreTv = createTextView("🎯 درجة ذكاء السوق: " + r.marketScore + " / 100", 16, true);
-        scoreTv.setTextColor(primaryColor);
-        overviewCard.addView(scoreTv);
-        content.addView(overviewCard);
+        TextView decisionTv = createTextView("القرار: " + r.decision, 24, true);
+        if ("BUY".equals(r.decision)) decisionTv.setTextColor(Color.GREEN);
+        else if ("SELL".equals(r.decision)) decisionTv.setTextColor(Color.RED);
+        else if ("WAIT".equals(r.decision)) decisionTv.setTextColor(Color.YELLOW);
+        else decisionTv.setTextColor(Color.GRAY);
+        decisionCard.addView(decisionTv);
 
-        // 2. Indicator Evaluations Card
-        LinearLayout evalCard = createCardBox();
-        evalCard.addView(createTextView("📈 2. تقييم المؤشرات الفنية للذهب", 18, true));
+        decisionCard.addView(createTextView("نسبة توافق العوامل (Confidence Score): " + String.format(Locale.US, "%.0f%%", r.confidenceScore * 100), 15, true));
+        content.addView(decisionCard);
 
-        evalCard.addView(createTextView("• RSI (14):", 14, true));
-        evalCard.addView(createTextView(r.rsiEvaluation, 13, false));
+        // 2. Technical Factors Analysis Summary Card
+        LinearLayout factorsCard = createCardBox();
+        factorsCard.addView(createTextView("📊 1. عوامل التحليل المتعددة للذهب", 18, true));
+        factorsCard.addView(createTextView("• الاتجاه (Trend): " + r.trend + " | قوة الاتجاه: " + r.trendStrength, 14, true));
+        factorsCard.addView(createTextView("• الزخم (Momentum): " + r.momentum, 14, false));
+        factorsCard.addView(createTextView("• التقلب (Volatility): " + r.volatility, 14, false));
+        factorsCard.addView(createTextView("• الهيكل السعري (Price Structure): " + r.priceStructure, 14, true));
+        factorsCard.addView(createTextView("• الدعم والمقاومة: S1=$" + String.format(Locale.US, "%.2f", r.support) + " | R1=$" + String.format(Locale.US, "%.2f", r.resistance), 14, false));
+        content.addView(factorsCard);
 
-        evalCard.addView(createTextView("\n• MACD Histogram:", 14, true));
-        evalCard.addView(createTextView(r.macdEvaluation, 13, false));
+        // 3. Supporting vs Conflicting Factors
+        LinearLayout reasoningCard = createCardBox();
+        reasoningCard.addView(createTextView("📖 2. شجح وتفنييد قرار التداول", 18, true));
 
-        evalCard.addView(createTextView("\n• المتوسطات المتحركة EMA (20/50/200):", 14, true));
-        evalCard.addView(createTextView(r.emaEvaluation, 13, false));
-
-        evalCard.addView(createTextView("\n• ATR (14) - التقلب السعري:", 14, true));
-        evalCard.addView(createTextView(r.atrEvaluation, 13, false));
-
-        evalCard.addView(createTextView("\n• الاتجاه وقوة الاتجاه:", 14, true));
-        evalCard.addView(createTextView(r.trendEvaluation, 13, false));
-
-        evalCard.addView(createTextView("\n• مستويات الدعم والمقاومة Pivot Points:", 14, true));
-        evalCard.addView(createTextView(r.supportResistanceEvaluation, 13, false));
-
-        content.addView(evalCard);
-
-        // 3. Educational Signal Card
-        LinearLayout signalCard = createCardBox();
-        signalCard.addView(createTextView("🎓 3. الإشارة التعليمية القائمة على توافق المؤشرات", 18, true));
-
-        TextView sigTv = createTextView("الإشارة: " + r.educationalSignal, 22, true);
-        if (r.educationalSignal.contains("BUY")) sigTv.setTextColor(Color.GREEN);
-        else if (r.educationalSignal.contains("SELL")) sigTv.setTextColor(Color.RED);
-        else if (r.educationalSignal.contains("NO TRADE")) sigTv.setTextColor(Color.GRAY);
-        else sigTv.setTextColor(Color.YELLOW);
-        signalCard.addView(sigTv);
-
-        signalCard.addView(createTextView("درجة توافق الشروط (Confidence Score): " + String.format(Locale.US, "%.0f%%", r.confidenceScore * 100), 15, true));
-        signalCard.addView(createTextView("\n• سبب الإشارة:\n" + r.signalReason, 13, false));
-
-        if (r.supportingIndicators != null && !r.supportingIndicators.isEmpty()) {
-            signalCard.addView(createTextView("\n✅ المؤشرات المؤيدة للإشارة:", 14, true));
-            for (String sup : r.supportingIndicators) {
-                signalCard.addView(createTextView("  ✔ " + sup, 13, false));
+        if (r.supportingFactors != null && !r.supportingFactors.isEmpty()) {
+            reasoningCard.addView(createTextView("✅ العوامل الداعمة للقرار:", 14, true));
+            for (String sup : r.supportingFactors) {
+                reasoningCard.addView(createTextView("  ✔ " + sup, 13, false));
             }
         }
 
-        if (r.conflictingIndicators != null && !r.conflictingIndicators.isEmpty()) {
-            signalCard.addView(createTextView("\n⚠️ المؤشرات المخالفة / المحذّرة:", 14, true));
-            for (String con : r.conflictingIndicators) {
-                signalCard.addView(createTextView("  ✖ " + con, 13, false));
+        if (r.conflictingFactors != null && !r.conflictingFactors.isEmpty()) {
+            reasoningCard.addView(createTextView("\n⚠️ العوامل المخالفة / التحذيرية:", 14, true));
+            for (String con : r.conflictingFactors) {
+                reasoningCard.addView(createTextView("  ✖ " + con, 13, false));
             }
         }
 
-        signalCard.addView(createTextView("\n⛔ ملحوظة: لا يتم تنفيذ أي تداول حقيقي تلقائياً. هذه إشارة تحليلية تعليمية.", 12, false));
+        reasoningCard.addView(createTextView("\n• شرح المحرك التفصيلي:\n" + r.explanation, 13, false));
 
-        Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى التداول الورقي", v -> executePaperTradeFromMiSignal(r));
+        // Paper Trading Button for Decision Signal
+        Button sendPaperBtn = createButton("📝 إرسال إشارة القرار إلى التداول الورقي", v -> executePaperTradeFromDecisionResult(r));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 12, 0, 0);
-        signalCard.addView(sendPaperBtn, lp);
+        reasoningCard.addView(sendPaperBtn, lp);
 
-        content.addView(signalCard);
+        content.addView(reasoningCard);
     }
 
-    void executePaperTradeFromMiSignal(MarketIntelligenceEngine.Result miRes) {
+    void executePaperTradeFromDecisionResult(TradingDecisionEngine.TradingDecisionResult decisionRes) {
         GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
-        res.currentPrice = miRes.currentPrice > 0 ? miRes.currentPrice : 2650.0;
-        res.signal = miRes.educationalSignal;
-        res.confidenceScore = miRes.confidenceScore;
+        res.currentPrice = decisionRes.currentPrice > 0 ? decisionRes.currentPrice : 2650.0;
+        res.signal = decisionRes.decision;
+        res.confidenceScore = decisionRes.confidenceScore;
         res.entryPrice = res.currentPrice;
-        res.atr = miRes.atr14 > 0 ? miRes.atr14 : 3.0;
+        res.atr = decisionRes.atr > 0 ? decisionRes.atr : 3.0;
 
         if (res.signal.contains("BUY")) {
             res.stopLoss = res.entryPrice - (res.atr * 1.5);
@@ -1063,9 +1030,9 @@ public class MainActivity extends Activity {
         }
 
         res.riskRewardRatio = 1.5;
-        res.arabicExplanation = miRes.signalReason;
+        res.arabicExplanation = decisionRes.explanation;
 
-        executePaperTradeFromSignalWithSource(res, "ذكاء السوق");
+        executePaperTradeFromSignalWithSource(res, "Trading Decision Engine");
     }
 
     // --- FALLBACK DATA GENERATORS ---

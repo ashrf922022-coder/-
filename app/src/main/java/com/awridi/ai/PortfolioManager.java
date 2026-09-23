@@ -124,7 +124,6 @@ public class PortfolioManager {
                     list.add(t);
                 }
             } catch (Throwable unmockedError) {
-                // JVM Fallback parser for unit testing
                 return parseTradesFallback(jsonStr);
             }
         } catch (Exception e) {

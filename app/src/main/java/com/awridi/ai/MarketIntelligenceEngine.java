@@ -1,6 +1,8 @@
+
 package com.awridi.ai;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -24,7 +26,6 @@ public class MarketIntelligenceEngine {
     }
 
     public static class Result {
-        public double currentPrice;
         public double sma20;
         public double sma50;
 
@@ -45,31 +46,12 @@ public class MarketIntelligenceEngine {
         public double relativeVolume;
 
         public String trend = "غير محدد";
-        public String trendStrength = "غير محدد";
-        public String momentum = "غير محدد";
-        public String volatility = "غير محدد";
-        public String marketState = "غير محدد";
         public String pattern = "غير محدد";
 
         public boolean breakout;
         public boolean pullback;
 
         public int marketScore;
-
-        // Educational Signal fields
-        public String educationalSignal = "WAIT ⏳";
-        public double confidenceScore = 0.50; // 0.00 to 1.00
-        public String signalReason = "";
-        public List<String> supportingIndicators = new ArrayList<>();
-        public List<String> conflictingIndicators = new ArrayList<>();
-
-        // Detailed Indicator Evaluations
-        public String rsiEvaluation = "";
-        public String macdEvaluation = "";
-        public String emaEvaluation = "";
-        public String atrEvaluation = "";
-        public String trendEvaluation = "";
-        public String supportResistanceEvaluation = "";
 
         public String explanation = "";
     }
@@ -83,9 +65,6 @@ public class MarketIntelligenceEngine {
                     "عدد البيانات غير كافٍ للتحليل. نحتاج إلى 30 شمعة على الأقل.";
             return result;
         }
-
-        Bar latestBar = bars.get(bars.size() - 1);
-        result.currentPrice = latestBar.close;
 
         result.sma20 = sma(bars, 20);
         result.sma50 = sma(bars, 50);
@@ -110,9 +89,6 @@ public class MarketIntelligenceEngine {
         result.relativeVolume = relativeVolume(bars, 20);
 
         result.trend = detectTrend(result);
-        result.trendStrength = detectTrendStrength(result);
-        result.momentum = detectMomentum(result);
-        result.volatility = detectVolatility(result);
 
         result.breakout = detectBreakout(
                 bars,
@@ -123,13 +99,8 @@ public class MarketIntelligenceEngine {
         result.pullback = detectPullback(bars, result);
 
         result.pattern = detectPattern(bars, result);
-        result.marketState = detectMarketState(result);
 
         result.marketScore = calculateScore(result);
-
-        // Compute indicator evaluations & educational signal
-        evaluateIndicators(result);
-        generateEducationalSignal(result);
 
         result.explanation = buildExplanation(result);
 
@@ -242,6 +213,20 @@ public class MarketIntelligenceEngine {
         double ema26 = ema(bars, 26);
 
         double macd = ema12 - ema26;
+
+        List<Bar> macdBars = new ArrayList<>();
+
+        for (Bar bar : bars) {
+            macdBars.add(
+                    new Bar(
+                            bar.open,
+                            bar.high,
+                            bar.low,
+                            bar.close,
+                            bar.volume
+                    )
+            );
+        }
 
         double signal = macd;
 
@@ -373,7 +358,9 @@ public class MarketIntelligenceEngine {
 
     private String detectTrend(Result r) {
 
-        if (r.ema20 > r.ema50 && r.ema50 > r.ema200) {
+        if (r.ema20 > r.ema50 &&
+                r.ema50 > r.ema200) {
+
             return "صاعد قوي";
         }
 
@@ -381,7 +368,9 @@ public class MarketIntelligenceEngine {
             return "صاعد";
         }
 
-        if (r.ema20 < r.ema50 && r.ema50 < r.ema200) {
+        if (r.ema20 < r.ema50 &&
+                r.ema50 < r.ema200) {
+
             return "هابط قوي";
         }
 
@@ -390,62 +379,6 @@ public class MarketIntelligenceEngine {
         }
 
         return "عرضي";
-    }
-
-    private String detectTrendStrength(Result r) {
-        if ("صاعد قوي".equals(r.trend) || "هابط قوي".equals(r.trend)) {
-            if (r.relativeVolume >= 1.2) {
-                return "قوية جدًا (95%) 🔥";
-            }
-            return "قوية (80%) 💪";
-        } else if ("صاعد".equals(r.trend) || "هابط".equals(r.trend)) {
-            return "متوسطة (60%) ⚖️";
-        }
-        return "ضعيفة / عرضية (30%) 🟡";
-    }
-
-    private String detectMomentum(Result r) {
-        if (r.rsi14 >= 70) {
-            return "تشبع شرائي / تباطؤ زخم ⚠️";
-        } else if (r.rsi14 <= 30) {
-            return "تشبع بيعي / احتمالية ارتداد 🔄";
-        } else if (r.macdHistogram > 0 && r.rsi14 >= 50) {
-            return "زخم شرائي قوي 🚀";
-        } else if (r.macdHistogram < 0 && r.rsi14 < 50) {
-            return "زخم بيعي ضاغط 📉";
-        }
-        return "زخم متوازن / محايد ⚖️";
-    }
-
-    private String detectVolatility(Result r) {
-        if (r.atr14 >= 4.0) {
-            return "مرتفع جدًا (حذر من الانزلاق السعري) ⚡";
-        } else if (r.atr14 >= 2.0) {
-            return "متوسط (مثالي للتداول والتحليل) 👌";
-        }
-        return "منخفض (نطاق ضيق / تجميع) 💤";
-    }
-
-    private String detectMarketState(Result r) {
-        if (r.breakout) {
-            return "اختراق سعري نشط لمستويات رئيسية 🚀";
-        }
-        if (r.pullback) {
-            return "تصحيح فني ملائم داخل اتجاه قائم 🎯";
-        }
-        if (r.rsi14 >= 70) {
-            return "سوق في منطقة تشبع شرائي - تجنب الدخول المباشر ⚠️";
-        }
-        if (r.rsi14 <= 30) {
-            return "سوق في منطقة تشبع بيعي - ترقب إشارات انعكاس 🔄";
-        }
-        if ("صاعد قوي".equals(r.trend)) {
-            return "اتجاه صاعد منتظم مع هيمنة القوى الشرائية 🟢";
-        }
-        if ("هابط قوي".equals(r.trend)) {
-            return "اتجاه هابط ضاغط مع هيمنة القوى البيعية 🔴";
-        }
-        return "نطاق تجميع عرضي وتوازن بين العرض والطلب 🟡";
     }
 
     private boolean detectBreakout(
@@ -584,129 +517,17 @@ public class MarketIntelligenceEngine {
         return Math.max(0, Math.min(100, score));
     }
 
-    private void evaluateIndicators(Result r) {
-        String rsiStatusStr = r.rsi14 >= 70 ? "تشبع شرائي (Overbought)" :
-                r.rsi14 <= 30 ? "تشبع بيعي (Oversold)" :
-                        r.rsi14 >= 50 ? "إيجابي / منطقة قوة شرائية" : "سلبي / منطقة ضغط بيعي";
-        String rsiImpactStr = r.rsi14 >= 70 ? "يحذر من فتح صفقات شراء جديدة لاحتمال جني الأرباح." :
-                r.rsi14 <= 30 ? "يشير إلى احتمال ارتداد صعودي قريب." :
-                        r.rsi14 >= 50 ? "يدعم استمرار العزم الصعودي." : "يدعم استمرار العزم الهبوطي.";
-        r.rsiEvaluation = String.format(Locale.US, "القراءة: %.2f (%s) | التأثير: %s", r.rsi14, rsiStatusStr, rsiImpactStr);
-
-        String macdStatusStr = r.macdHistogram > 0 ? "أشرطة موجبة (زخم صعودي)" : "أشرطة سالبة (زخم هبوطي)";
-        String macdImpactStr = r.macdHistogram > 0 ? "يعزز فرص إشارات الشراء لمطابقة الزخم." : "يعزز فرص إشارات البيع لمطابقة الزخم.";
-        r.macdEvaluation = String.format(Locale.US, "القراءة: %.5f (%s) | التأثير: %s", r.macdHistogram, macdStatusStr, macdImpactStr);
-
-        String emaStatusStr = (r.ema20 > r.ema50 && r.ema50 > r.ema200) ? "ترتيب صاعد مثالي (EMA20 > EMA50 > EMA200)" :
-                (r.ema20 < r.ema50 && r.ema50 < r.ema200) ? "ترتيب هابط محكم (EMA20 < EMA50 < EMA200)" : "تداخل في المتوسطات المتحركة";
-        String emaImpactStr = (r.ema20 > r.ema50) ? "السعر يتحرك أعلى المتوسطات مما يوفر دعمًا ديناميكيًا." : "السعر يتحرك أسفل المتوسطات مما يمثل مقاومة ديناميكية.";
-        r.emaEvaluation = String.format(Locale.US, "EMA20=$%.2f | EMA50=$%.2f | EMA200=$%.2f\nالحالة: %s | التأثير: %s", r.ema20, r.ema50, r.ema200, emaStatusStr, emaImpactStr);
-
-        String atrImpactStr = r.atr14 >= 4.0 ? "يتطلب توسيع وقف الخسارة وتقليل حجم اللوت لحماية رأس المال." :
-                r.atr14 >= 2.0 ? "معدل تقلب طبيعي يسمح بوضع أهداف وقف خسارة وجني أرباح متوازنة." : "تقلب ضيق يشير إلى قرب انفجار سعري المرتقب.";
-        r.atrEvaluation = String.format(Locale.US, "القراءة: $%.2f (%s) | التأثير: %s", r.atr14, r.volatility, atrImpactStr);
-
-        String trendImpactStr = r.trend.contains("صاعد") ? "تفضيل صفقات الشراء والامتناع عن معاكسة الاتجاه." :
-                r.trend.contains("هابط") ? "تفضيل صفقات البيع والامتناع عن الشراء المعاكس." : "الانتظار لحين خروج السعر من الحركة العرضية.";
-        r.trendEvaluation = String.format(Locale.US, "الاتجاه: %s | قوة الاتجاه: %s | التأثير: %s", r.trend, r.trendStrength, trendImpactStr);
-
-        double distSupport = Math.abs(r.currentPrice - r.support);
-        double distResist = Math.abs(r.resistance - r.currentPrice);
-        String srImpactStr = distResist < distSupport ? "السعر قريب من مستوى المقاومة ($" + String.format(Locale.US, "%.2f", r.resistance) + ") — يجب الحذر عند الشراء." :
-                "السعر قريب من مستوى الدعم ($" + String.format(Locale.US, "%.2f", r.support) + ") — توفير منطقة حماية جيدة لصفقات الشراء.";
-        r.supportResistanceEvaluation = String.format(Locale.US, "الدعم: $%.2f | المقاومة: $%.2f | التأثير: %s", r.support, r.resistance, srImpactStr);
-    }
-
-    private void generateEducationalSignal(Result r) {
-        r.supportingIndicators.clear();
-        r.conflictingIndicators.clear();
-
-        boolean buyConditions = r.currentPrice > r.ema50 && r.rsi14 >= 45 && r.rsi14 <= 68 && r.macdHistogram > 0 && r.ema20 > r.ema50;
-        boolean sellConditions = r.currentPrice < r.ema50 && r.rsi14 <= 55 && r.rsi14 >= 32 && r.macdHistogram < 0 && r.ema20 < r.ema50;
-
-        int alignedCount = 0;
-
-        if (buyConditions && !sellConditions) {
-            r.educationalSignal = "BUY SETUP 🟢";
-
-            if (r.currentPrice > r.ema50) { r.supportingIndicators.add("السعر أعلى من EMA50"); alignedCount++; }
-            if (r.ema20 > r.ema50) { r.supportingIndicators.add("ترتيب المتوسطات صاعد (EMA20 > EMA50)"); alignedCount++; }
-            if (r.macdHistogram > 0) { r.supportingIndicators.add("زخم MACD موجَب وإيجابي"); alignedCount++; }
-            if (r.rsi14 >= 45 && r.rsi14 <= 68) { r.supportingIndicators.add("مؤشر RSI متوازن (" + String.format(Locale.US, "%.1f", r.rsi14) + ")"); alignedCount++; }
-            if (r.relativeVolume >= 1.0) { r.supportingIndicators.add("حجم تداول أعلى من المتوسط"); alignedCount++; }
-
-            if (r.currentPrice >= r.resistance - (r.atr14 * 0.5)) {
-                r.conflictingIndicators.add("السعر قريب جداً من مستوى المقاومة ($" + String.format(Locale.US, "%.2f", r.resistance) + ")");
-            }
-            if (r.atr14 >= 4.0) {
-                r.conflictingIndicators.add("ارتفاع حاد في التقلب ATR");
-            }
-
-            r.confidenceScore = Math.min(0.95, 0.60 + (alignedCount * 0.07));
-            r.signalReason = "توافق المؤشرات الفنية للشرط الصعودي: السعر يتحرك أعلى المتوسط المتحرك 50 مع زخم إيجابي في MACD واستقرار قوة RSI بدون تشبع.";
-
-        } else if (sellConditions && !buyConditions) {
-            r.educationalSignal = "SELL SETUP 🔴";
-
-            if (r.currentPrice < r.ema50) { r.supportingIndicators.add("السعر أسفل EMA50"); alignedCount++; }
-            if (r.ema20 < r.ema50) { r.supportingIndicators.add("ترتيب المتوسطات هابط (EMA20 < EMA50)"); alignedCount++; }
-            if (r.macdHistogram < 0) { r.supportingIndicators.add("زخم MACD سالِب وسلبي"); alignedCount++; }
-            if (r.rsi14 <= 55 && r.rsi14 >= 32) { r.supportingIndicators.add("مؤشر RSI في النطاق الهابط (" + String.format(Locale.US, "%.1f", r.rsi14) + ")"); alignedCount++; }
-            if (r.relativeVolume >= 1.0) { r.supportingIndicators.add("حجم تداول أعلى من المتوسط"); alignedCount++; }
-
-            if (r.currentPrice <= r.support + (r.atr14 * 0.5)) {
-                r.conflictingIndicators.add("السعر قريب جداً من مستوى الدعم ($" + String.format(Locale.US, "%.2f", r.support) + ")");
-            }
-            if (r.atr14 >= 4.0) {
-                r.conflictingIndicators.add("ارتفاع حاد في التقلب ATR");
-            }
-
-            r.confidenceScore = Math.min(0.95, 0.60 + (alignedCount * 0.07));
-            r.signalReason = "توافق المؤشرات الفنية للشرط الهبوطي: السعر كسَر المتوسط المتحرك 50 مع زخم سلبي متزايد في MACD وضغط بيعي في RSI.";
-
-        } else if (r.rsi14 >= 70 || r.rsi14 <= 30 || r.atr14 >= 4.5) {
-            r.educationalSignal = "NO TRADE 🚫";
-            r.confidenceScore = 0.25;
-
-            r.conflictingIndicators.add("مؤشر RSI في منطقة ذروة حرجة (" + String.format(Locale.US, "%.1f", r.rsi14) + ")");
-            if (r.atr14 >= 4.5) r.conflictingIndicators.add("التقلب حاد وغير آمن للصفقات الجديدة");
-
-            if (r.ema20 > r.ema50) r.supportingIndicators.add("الاتجاه العام لا يزال صاعداً لكن محفوف بالمخاطر");
-            else r.supportingIndicators.add("الاتجاه العام لا يزال هابطاً لكن محفوف بالمخاطر");
-
-            r.signalReason = "السوق يتواجد في حالة تشبع حرجة أو تقلب شديد للغاية، يمنع فتح صفقات جديدة للحفاظ على رأس المال.";
-
-        } else {
-            r.educationalSignal = "WAIT ⏳";
-            r.confidenceScore = 0.50;
-
-            if (r.ema20 > r.ema50) r.supportingIndicators.add("إشارة صعودية جزئية من المتوسطات");
-            else r.supportingIndicators.add("إشارة هبوطية جزئية من المتوسطات");
-
-            if (r.macdHistogram > 0) r.conflictingIndicators.add("MACD موجب لكن السعر غير متوافق تماماً");
-            else r.conflictingIndicators.add("MACD سالب لكن السعر غير متوافق تماماً");
-
-            r.signalReason = "عدم اكتمال شروط الشراء أو البيع الفنية، يُنصح بالانتظار حتى تتضح الحركة الاتجاهية القادمة.";
-        }
-    }
-
     private String buildExplanation(Result r) {
 
         StringBuilder text = new StringBuilder();
 
         text.append("الاتجاه: ")
                 .append(r.trend)
-                .append(" | قوة الاتجاه: ")
-                .append(r.trendStrength)
                 .append("\n");
 
-        text.append("حالة السوق: ")
-                .append(r.marketState)
+        text.append("النمط: ")
+                .append(r.pattern)
                 .append("\n");
-
-        text.append("الإشارة التعليمية: ")
-                .append(r.educationalSignal)
-                .append(String.format(Locale.US, " (نسبة الثقة: %.0f%%)\n", r.confidenceScore * 100));
 
         text.append(String.format(
                 Locale.US,
@@ -728,10 +549,29 @@ public class MarketIntelligenceEngine {
 
         text.append(String.format(
                 Locale.US,
-                "الدعم: $%.2f | المقاومة: $%.2f\n",
-                r.support,
+                "الدعم: %.5f\n",
+                r.support
+        ));
+
+        text.append(String.format(
+                Locale.US,
+                "المقاومة: %.5f\n",
                 r.resistance
         ));
+
+        text.append(String.format(
+                Locale.US,
+                "حجم التداول النسبي: %.2fx\n",
+                r.relativeVolume
+        ));
+
+        if (r.breakout) {
+            text.append("يوجد اختراق حديث لمستوى رئيسي.\n");
+        }
+
+        if (r.pullback) {
+            text.append("يوجد تصحيح محتمل داخل الاتجاه الحالي.\n");
+        }
 
         text.append("درجة ذكاء السوق: ")
                 .append(r.marketScore)
@@ -739,4 +579,4 @@ public class MarketIntelligenceEngine {
 
         return text.toString();
     }
-}
+    }
