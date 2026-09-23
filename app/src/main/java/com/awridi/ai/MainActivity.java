@@ -257,7 +257,7 @@ public class MainActivity extends Activity {
 
         LinearLayout heroCard = createCardBox();
         heroCard.addView(createTextView("👑 مساعد تداول الذهب (XAU/USD)", 20, true));
-        heroCard.addView(createTextView("تحليل فني متعدد الأطر + محرك القرار + إدارة المخاطر", 13, false));
+        heroCard.addView(createTextView("تحليل فني متعدد الأطر + محرك القرار + إدارة المخاطر المتقدمة", 13, false));
         content.addView(heroCard);
 
         LinearLayout actionCard = createCardBox();
@@ -358,6 +358,14 @@ public class MainActivity extends Activity {
             tradeCard.addView(createTextView("• الهدف الأول (Take Profit 1): $" + String.format(Locale.US, "%.2f", res.takeProfit1), 14, false));
             tradeCard.addView(createTextView("• الهدف الثاني (Take Profit 2): $" + String.format(Locale.US, "%.2f", res.takeProfit2), 14, false));
             tradeCard.addView(createTextView("• نسبة المخاطرة/العائد (R:R): 1 : " + String.format(Locale.US, "%.2f", res.riskRewardRatio), 14, false));
+
+            double capital = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+            double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
+            double riskUsd = capital * (riskPct / 100.0);
+            double expectedProfitUsd = riskUsd * res.riskRewardRatio;
+
+            tradeCard.addView(createTextView("• قيمة المخاطرة بالدولار: $" + String.format(Locale.US, "%.2f", riskUsd), 14, true));
+            tradeCard.addView(createTextView("• قيمة الربح المتوقع بالدولار: $" + String.format(Locale.US, "%.2f", expectedProfitUsd), 14, true));
             tradeCard.addView(createTextView("• الحجم المقترح للصفقة: " + String.format(Locale.US, "%.2f", res.suggestedLot) + " اللوت", 14, true));
 
             Button paperBtn = createButton("📝 فتح صفقة تجريبية بهذه الشروط", v -> executePaperTradeFromSignal(res));
@@ -389,7 +397,7 @@ public class MainActivity extends Activity {
         content.addView(warningCard);
     }
 
-    // --- SCREEN 2: PORTFOLIO & CAPITAL MANAGEMENT ---
+    // --- SCREEN 2: PORTFOLIO & RISK MANAGEMENT ---
     void showPaperTradingScreen() {
         showPortfolioScreen();
     }
@@ -400,30 +408,43 @@ public class MainActivity extends Activity {
         PortfolioManager.PortfolioSummary sum = PortfolioManager.calculateSummary(prefs);
 
         LinearLayout titleCard = createCardBox();
-        titleCard.addView(createTextView("💼 المحفظة — إدارة رأس المال وسجل الصفقات", 20, true));
-        titleCard.addView(createTextView("نظام إدارة محفظة الذهب (XAU/USD)، المخاطر والتحليلات الإحصائية الشاملة.", 13, false));
+        titleCard.addView(createTextView("💼 المحفظة — إدارة رأس المال والمخاطر المتقدمة", 20, true));
+        titleCard.addView(createTextView("نظام متكامل لمتابعة رأس المال، حدود المخاطرة اليومية، وحماية الرصيد.", 13, false));
         content.addView(titleCard);
 
-        if (sum.isDailyLossExceeded) {
+        // Daily Risk Warnings
+        if (sum.isDailyLossExceeded || sum.isDailyTradesExceeded) {
             LinearLayout warnCard = createCardBox();
             GradientDrawable wGd = new GradientDrawable();
             wGd.setColor(Color.parseColor("#3A1319"));
             wGd.setCornerRadius(16);
             wGd.setStroke(2, Color.RED);
             warnCard.setBackground(wGd);
-            warnCard.addView(createTextView("⚠️ تحذير إدارة المخاطر اليومية!", 16, true));
-            TextView warnTv = createTextView("لقد تجاوزت الخسارة اليومية الحالية (" + String.format(Locale.US, "%.1f%%", sum.todayLossPct) + ") الحد الأقصى المسموح به (" + prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0") + "%). يُنصح بالتوقف عن التداول اليوم لحماية رأس المال.", 13, false);
+            warnCard.addView(createTextView("⚠️ تحذير حماية رأس المال وتجاوز الحدود!", 16, true));
+
+            StringBuilder warnMsg = new StringBuilder();
+            if (sum.isDailyLossExceeded) {
+                warnMsg.append("• تجاوزت الخسارة اليومية الحالية (").append(String.format(Locale.US, "%.1f%%", sum.todayLossPct))
+                        .append(") الحد الأقصى المسموح به (").append(prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0")).append("%).\n");
+            }
+            if (sum.isDailyTradesExceeded) {
+                warnMsg.append("• وصلت إلى الحد الأقصى لعدد الصفقات اليومية (").append(sum.todayTradesCount).append(" من ").append(sum.maxDailyTrades).append(" صفقات).\n");
+            }
+            warnMsg.append("تم إيقاف فتح صفقات جديدة في التداول الورقي لحماية رأس المال.");
+
+            TextView warnTv = createTextView(warnMsg.toString(), 13, false);
             warnTv.setTextColor(Color.parseColor("#FF6B6B"));
             warnCard.addView(warnTv);
             content.addView(warnCard);
         }
 
+        // 1. Portfolio Dashboard Section
         LinearLayout dashCard = createCardBox();
-        dashCard.addView(createTextView("📊 1. لوحة المحفظة (Portfolio Dashboard)", 16, true));
+        dashCard.addView(createTextView("📊 1. رأس المال والرصيد (Capital Dashboard)", 16, true));
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        TextView capTv = createTextView("• رأس المال الأساسي:\n$" + String.format(Locale.US, "%.2f", sum.baseCapital), 13, true);
+        TextView capTv = createTextView("• رأس المال الحالي:\n$" + String.format(Locale.US, "%.2f", sum.baseCapital), 13, true);
         TextView balTv = createTextView("• الرصيد الحالي:\n$" + String.format(Locale.US, "%.2f", sum.currentBalance), 13, true);
         balTv.setTextColor(primaryColor);
         row1.addView(capTv, new LinearLayout.LayoutParams(0, -2, 1));
@@ -433,25 +454,26 @@ public class MainActivity extends Activity {
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
         TextView availTv = createTextView("• الرصيد المتاح:\n$" + String.format(Locale.US, "%.2f", sum.availableBalance), 13, false);
-        TextView pnlTv = createTextView("• إجمالي P/L:\n$" + String.format(Locale.US, "%+.2f", sum.totalPnl), 13, true);
-        pnlTv.setTextColor(sum.totalPnl >= 0 ? Color.GREEN : Color.RED);
+        TextView marginTv = createTextView("• الصفقات المفتوحة:\n$" + String.format(Locale.US, "%.2f", sum.openTradesMarginUsed), 13, false);
         row2.addView(availTv, new LinearLayout.LayoutParams(0, -2, 1));
-        row2.addView(pnlTv, new LinearLayout.LayoutParams(0, -2, 1));
+        row2.addView(marginTv, new LinearLayout.LayoutParams(0, -2, 1));
         dashCard.addView(row2);
 
         LinearLayout row3 = new LinearLayout(this);
         row3.setOrientation(LinearLayout.HORIZONTAL);
         TextView retTv = createTextView("• نسبة العائد:\n" + String.format(Locale.US, "%+.2f%%", sum.returnPct), 13, true);
         retTv.setTextColor(sum.returnPct >= 0 ? Color.GREEN : Color.RED);
-        TextView tradesCntTv = createTextView("• عدد الصفقات المغلقة:\n" + sum.totalTrades + " (المفتوحة: " + sum.openTradesCount + ")", 13, false);
+        TextView pnlTv = createTextView("• إجمالي P/L:\n$" + String.format(Locale.US, "%+.2f", sum.totalPnl), 13, true);
+        pnlTv.setTextColor(sum.totalPnl >= 0 ? Color.GREEN : Color.RED);
         row3.addView(retTv, new LinearLayout.LayoutParams(0, -2, 1));
-        row3.addView(tradesCntTv, new LinearLayout.LayoutParams(0, -2, 1));
+        row3.addView(pnlTv, new LinearLayout.LayoutParams(0, -2, 1));
         dashCard.addView(row3);
 
         content.addView(dashCard);
 
+        // 2. Risk Management Settings Section
         LinearLayout capMgmtCard = createCardBox();
-        capMgmtCard.addView(createTextView("⚙️ 2. إدارة رأس المال والمخاطر (Capital Management)", 16, true));
+        capMgmtCard.addView(createTextView("⚙️ 2. إعدادات إدارة المخاطر (Risk Settings)", 16, true));
 
         capMgmtCard.addView(createTextView("رأس المال الأساسي ($):", 13, true));
         EditText baseCapEd = createEditText("رأس المال...", String.format(Locale.US, "%.2f", sum.baseCapital));
@@ -465,18 +487,24 @@ public class MainActivity extends Activity {
         EditText maxDailyLossEd = createEditText("3.0", prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0"));
         capMgmtCard.addView(maxDailyLossEd);
 
+        capMgmtCard.addView(createTextView("الحد الأقصى لعدد الصفقات اليومية (Max Daily Trades):", 13, true));
+        EditText maxDailyTradesEd = createEditText("5", String.valueOf(sum.maxDailyTrades));
+        capMgmtCard.addView(maxDailyTradesEd);
+
         double riskPctVal = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
         double riskDollars = sum.baseCapital * (riskPctVal / 100.0);
-        capMgmtCard.addView(createTextView("• مبلغ المخاطرة المحسوب بالدولار للصفقة: $" + String.format(Locale.US, "%.2f", riskDollars), 13, true));
+        capMgmtCard.addView(createTextView("• قيمة المخاطرة المحسوبة بالدولار لكل صفقة: $" + String.format(Locale.US, "%.2f", riskDollars), 13, true));
+        capMgmtCard.addView(createTextView("• عدد صفقات اليوم حتى الآن: " + sum.todayTradesCount + " / " + sum.maxDailyTrades, 13, false));
 
-        Button updateCapBtn = createButton("💾 تحديث إعدادات رأس المال والمخاطر", v -> {
+        Button updateCapBtn = createButton("💾 حفظ وتحديث إعدادات المخاطر", v -> {
             try {
                 double newCap = Double.parseDouble(baseCapEd.getText().toString().trim());
                 double newRisk = Double.parseDouble(riskPctEd.getText().toString().trim());
                 double newDailyLoss = Double.parseDouble(maxDailyLossEd.getText().toString().trim());
+                int newDailyTrades = Integer.parseInt(maxDailyTradesEd.getText().toString().trim());
 
-                PortfolioManager.updateCapitalSettings(prefs, newCap, newRisk, newDailyLoss);
-                Toast.makeText(this, "تم تحديث إعدادات المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
+                PortfolioManager.updateCapitalSettings(prefs, newCap, newRisk, newDailyLoss, newDailyTrades);
+                Toast.makeText(this, "تم تحديث إعدادات المخاطر والمحفظة بنجاح!", Toast.LENGTH_SHORT).show();
                 showPortfolioScreen();
             } catch (Exception e) {
                 Toast.makeText(this, "يرجى إدخال أرقام صالحة", Toast.LENGTH_SHORT).show();
@@ -496,6 +524,7 @@ public class MainActivity extends Activity {
 
         content.addView(capMgmtCard);
 
+        // Load All Trades
         List<PortfolioManager.PortfolioTrade> allTrades = PortfolioManager.loadTrades(prefs);
         List<PortfolioManager.PortfolioTrade> openTrades = new ArrayList<>();
         List<PortfolioManager.PortfolioTrade> closedTrades = new ArrayList<>();
@@ -505,6 +534,7 @@ public class MainActivity extends Activity {
             else closedTrades.add(t);
         }
 
+        // 3. Open Trades Section
         LinearLayout openTradesCard = createCardBox();
         openTradesCard.addView(createTextView("🔓 3. الصفقات المفتوحة (Open Trades)", 16, true));
 
@@ -514,9 +544,10 @@ public class MainActivity extends Activity {
             for (PortfolioManager.PortfolioTrade ot : openTrades) {
                 LinearLayout item = createCardBox();
                 item.addView(createTextView("📌 " + ot.type + " " + ot.symbol + " | Lot: " + String.format(Locale.US, "%.2f", ot.lotSize), 15, true));
+                item.addView(createTextView("المصدر: " + (ot.signalSource != null ? ot.signalSource : "مساعد AWRIDI AI"), 13, true));
                 item.addView(createTextView("وقت الفتح: " + ot.date + " | الدخول: $" + String.format(Locale.US, "%.2f", ot.entryPrice), 13, false));
-                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", ot.stopLoss) + " | TP1: $" + String.format(Locale.US, "%.2f", ot.tp1) + " | TP2: $" + String.format(Locale.US, "%.2f", ot.tp2), 13, false));
-                item.addView(createTextView("المخاطرة: $" + String.format(Locale.US, "%.2f", ot.riskAmount) + " | R:R: 1:" + String.format(Locale.US, "%.2f", ot.rrRatio), 13, false));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", ot.stopLoss) + " | TP1: $" + String.format(Locale.US, "%.2f", ot.tp1), 13, false));
+                item.addView(createTextView("المخاطرة المتوقعة: $" + String.format(Locale.US, "%.2f", ot.riskAmount) + " | الربح المتوقع: $" + String.format(Locale.US, "%.2f", ot.expectedProfit), 13, false));
 
                 LinearLayout btns = new LinearLayout(this);
                 btns.setOrientation(LinearLayout.HORIZONTAL);
@@ -545,8 +576,9 @@ public class MainActivity extends Activity {
         }
         content.addView(openTradesCard);
 
+        // 4. Trade History Section
         LinearLayout historyCard = createCardBox();
-        historyCard.addView(createTextView("📜 4. سجل الصفقات المغلقة (Trade History)", 16, true));
+        historyCard.addView(createTextView("📜 4. سجل الصفقات المغلقة (Trade History Log)", 16, true));
 
         if (closedTrades.isEmpty()) {
             historyCard.addView(createTextView("لا توجد صفقات مغلقة بعد.", 13, false));
@@ -558,10 +590,11 @@ public class MainActivity extends Activity {
                 headerTv.setTextColor("WIN".equals(ct.status) ? Color.GREEN : Color.RED);
                 item.addView(headerTv);
 
+                item.addView(createTextView("المصدر: " + (ct.signalSource != null ? ct.signalSource : "مساعد AWRIDI AI"), 12, true));
                 item.addView(createTextView("التاريخ: " + ct.date + " | الدخول: $" + String.format(Locale.US, "%.2f", ct.entryPrice) + " | الخروج: $" + String.format(Locale.US, "%.2f", ct.exitPrice), 13, false));
                 item.addView(createTextView("Lot: " + String.format(Locale.US, "%.2f", ct.lotSize) + " | SL: $" + String.format(Locale.US, "%.2f", ct.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", ct.tp1), 13, false));
 
-                TextView pnlResultTv = createTextView("P/L: $" + String.format(Locale.US, "%+.2f", ct.pnl) + " | R:R: 1:" + String.format(Locale.US, "%.2f", ct.rrRatio), 14, true);
+                TextView pnlResultTv = createTextView("النتيجة P/L: $" + String.format(Locale.US, "%+.2f", ct.pnl) + " | R:R: 1:" + String.format(Locale.US, "%.2f", ct.rrRatio), 14, true);
                 pnlResultTv.setTextColor(ct.pnl >= 0 ? Color.GREEN : Color.RED);
                 item.addView(pnlResultTv);
 
@@ -573,21 +606,26 @@ public class MainActivity extends Activity {
         }
         content.addView(historyCard);
 
+        // 5. Real Statistics Section
         LinearLayout statCard = createCardBox();
-        statCard.addView(createTextView("📈 5. التحليلات الإحصائية (Statistics)", 16, true));
+        statCard.addView(createTextView("📈 5. التحليلات والإحصائيات الحقيقية (Real Performance Statistics)", 16, true));
 
+        statCard.addView(createTextView("• عدد الصفقات الكلي: " + sum.totalTrades, 14, true));
         statCard.addView(createTextView("• Win Rate: " + String.format(Locale.US, "%.1f%%", sum.winRate) + " (الرابحة: " + sum.winningTrades + " / الخاسرة: " + sum.losingTrades + ")", 14, true));
         statCard.addView(createTextView("• Profit Factor: " + String.format(Locale.US, "%.2f", sum.profitFactor), 14, true));
-        statCard.addView(createTextView("• Max Drawdown: " + String.format(Locale.US, "%.1f%%", sum.maxDrawdown), 14, false));
-        statCard.addView(createTextView("• متوسط الصفحات الرابحة: $" + String.format(Locale.US, "%.2f", sum.avgWin), 13, false));
-        statCard.addView(createTextView("• متوسط الصفحات الخاسرة: $" + String.format(Locale.US, "%.2f", sum.avgLoss), 13, false));
-        statCard.addView(createTextView("• أكبر صفقة رابحة (Largest Win): $" + String.format(Locale.US, "%.2f", sum.largestWin), 13, false));
-        statCard.addView(createTextView("• أكبر صفقة خاسرة (Largest Loss): $" + String.format(Locale.US, "%.2f", sum.largestLoss), 13, false));
+        statCard.addView(createTextView("• أقصى تراجع للرصيد (Max Drawdown): " + String.format(Locale.US, "%.1f%%", sum.maxDrawdown), 14, false));
+        statCard.addView(createTextView("• متوسط الصفقات الرابحة: $" + String.format(Locale.US, "%.2f", sum.avgWin), 13, false));
+        statCard.addView(createTextView("• متوسط الصفقات الخاسرة: $" + String.format(Locale.US, "%.2f", sum.avgLoss), 13, false));
+        statCard.addView(createTextView("• أكبر صفقة رابحة: $" + String.format(Locale.US, "%.2f", sum.largestWin), 13, false));
+        statCard.addView(createTextView("• أكبر صفقة خاسرة: $" + String.format(Locale.US, "%.2f", sum.largestLoss), 13, false));
+        statCard.addView(createTextView("• أطول سلسلة خسائر متتالية: " + sum.longestLosingStreak, 13, false));
+        statCard.addView(createTextView("• إجمالي P/L: $" + String.format(Locale.US, "%+.2f", sum.totalPnl), 15, true));
 
         content.addView(statCard);
 
+        // 6. Capital History Operations Log Section
         LinearLayout capHistCard = createCardBox();
-        capHistCard.addView(createTextView("🏦 7. سجل العمليات والتعديلات على رأس المال (Capital History)", 16, true));
+        capHistCard.addView(createTextView("🏦 6. سجل حماية رأس المال والعمليات (Capital Protection Log)", 16, true));
 
         List<PortfolioManager.CapitalRecord> records = PortfolioManager.loadCapitalHistory(prefs);
         if (records.isEmpty()) {
@@ -607,10 +645,12 @@ public class MainActivity extends Activity {
         content.addView(capHistCard);
     }
 
+    // Modal Dialog for Trade Details
     void showTradeDetailModal(PortfolioManager.PortfolioTrade t) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         LinearLayout box = createCardBox();
         box.addView(createTextView("📌 تفاصيل الصفقة الكاملة", 18, true));
+        box.addView(createTextView("مصدر الإشارة: " + (t.signalSource != null ? t.signalSource : "مساعد AWRIDI AI"), 13, true));
         box.addView(createTextView("معرّف الصفقة: " + t.id, 11, false));
         box.addView(createTextView("الرمز: " + t.symbol + " | نوع الصفقة: " + t.type, 14, true));
         box.addView(createTextView("حالة الصفقة: " + t.status, 14, true));
@@ -621,8 +661,9 @@ public class MainActivity extends Activity {
         box.addView(createTextView("الهدف الأول (TP1): $" + String.format(Locale.US, "%.2f", t.tp1), 13, false));
         box.addView(createTextView("الهدف الثاني (TP2): $" + String.format(Locale.US, "%.2f", t.tp2), 13, false));
         box.addView(createTextView("حجم الصفقة (Lot): " + String.format(Locale.US, "%.2f", t.lotSize), 13, false));
-        box.addView(createTextView("مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", t.riskAmount), 13, false));
-        box.addView(createTextView("الأرباح / الخسائر P/L: $" + String.format(Locale.US, "%+.2f", t.pnl), 14, true));
+        box.addView(createTextView("مبلغ المخاطرة بالدولار: $" + String.format(Locale.US, "%.2f", t.riskAmount), 13, false));
+        box.addView(createTextView("الربح المتوقع بالدولار: $" + String.format(Locale.US, "%.2f", t.expectedProfit), 13, false));
+        box.addView(createTextView("الأرباح / الخسائر P/L المحققة: $" + String.format(Locale.US, "%+.2f", t.pnl), 14, true));
         box.addView(createTextView("نسبة Risk:Reward: 1 : " + String.format(Locale.US, "%.2f", t.rrRatio), 13, false));
         box.addView(createTextView("سبب الدخول والتحليل:\n" + t.entryReason, 13, false));
         box.addView(createTextView("ملاحظات: " + t.notes, 12, false));
@@ -679,56 +720,103 @@ public class MainActivity extends Activity {
     }
 
     void executePaperTradeFromSignal(GoldAnalysisEngine.AnalysisResult res) {
-        PortfolioManager.PortfolioSummary sum = PortfolioManager.calculateSummary(prefs);
-        if (sum.isDailyLossExceeded) {
+        executePaperTradeFromSignalWithSource(res, "مساعد AWRIDI AI");
+    }
+
+    void executePaperTradeFromSignalWithSource(GoldAnalysisEngine.AnalysisResult res, String sourceName) {
+        PortfolioManager.RiskValidationResult valRes = PortfolioManager.validateTradeRisk(prefs, res.entryPrice, res.stopLoss, res.takeProfit1, res.signal, sourceName);
+
+        if (!valRes.isAllowed) {
             new AlertDialog.Builder(this)
-                .setTitle("⚠️ تحذير حد المخاطرة اليومية")
-                .setMessage("لقد تجاوزت الحد الأقصى للخسارة اليومية المحدد بـ (" + prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0") + "%).\nهل أنت متاكد من رغبتك في فتح صفقة جديدة رغم تجاوز الحد اليومي؟")
-                .setPositiveButton("فتح الصفقة على كل حال", (dialog, which) -> {
-                    PortfolioManager.executeTradeFromSignal(prefs, res);
-                    Toast.makeText(this, "تم فتح الصفقة التجريبية في المحفظة!", Toast.LENGTH_SHORT).show();
-                    showPortfolioScreen();
-                })
-                .setNegativeButton("التراجع والحفاظ على رأس المال", null)
-                .show();
+                    .setTitle("⚠️ رفض صفقة التداول الورقي (قواعد المخاطر)")
+                    .setMessage(valRes.messageArabic)
+                    .setPositiveButton("موافق", null)
+                    .show();
         } else {
-            PortfolioManager.executeTradeFromSignal(prefs, res);
-            Toast.makeText(this, "تم فتح الصفقة التجريبية في المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
-            showPortfolioScreen();
+            new AlertDialog.Builder(this)
+                    .setTitle("✅ قبول صفقة التداول الورقي")
+                    .setMessage(valRes.messageArabic + "\n\n• تفاصيل المخاطرة والأهداف:\n" +
+                            " - مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", valRes.riskAmountUsd) + "\n" +
+                            " - الربح المتوقع: $" + String.format(Locale.US, "%.2f", valRes.expectedProfitUsd) + "\n" +
+                            " - نسبة Risk/Reward: 1 : " + String.format(Locale.US, "%.2f", valRes.rrRatio) + "\n" +
+                            " - الحجم (Lot): " + String.format(Locale.US, "%.2f", valRes.lotSize))
+                    .setPositiveButton("تأكيد فتح الصفقة", (dialog, which) -> {
+                        PortfolioManager.executeTradeFromSignal(prefs, res, sourceName);
+                        Toast.makeText(this, "تم تسجيل الصفقة التجريبية في المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
+                        showPortfolioScreen();
+                    })
+                    .setNegativeButton("إلغاء", null)
+                    .show();
         }
     }
 
-    void executePaperTradeFromMiSignal(MarketIntelligenceEngine.Result miRes) {
-        GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
-        res.currentPrice = miRes.currentPrice > 0 ? miRes.currentPrice : 2650.0;
-        res.signal = miRes.educationalSignal;
-        res.confidenceScore = miRes.confidenceScore;
-        res.entryPrice = res.currentPrice;
-        res.atr = miRes.atr14 > 0 ? miRes.atr14 : 3.0;
+    void closePaperTrade(PaperTrade trade, boolean isWin) {
+        PortfolioManager.PortfolioTrade pt = new PortfolioManager.PortfolioTrade();
+        pt.id = trade.id;
+        pt.entryPrice = trade.entryPrice;
+        pt.stopLoss = trade.stopLoss;
+        pt.tp1 = trade.tp1;
+        pt.riskAmount = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000")) * (Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0")) / 100.0);
+        PortfolioManager.closeTrade(prefs, pt, isWin, 0.0);
+        showPortfolioScreen();
+    }
 
-        if (res.signal.contains("BUY")) {
-            res.stopLoss = res.entryPrice - (res.atr * 1.5);
-            res.takeProfit1 = res.entryPrice + (res.atr * 1.5);
-            res.takeProfit2 = res.entryPrice + (res.atr * 3.0);
-        } else if (res.signal.contains("SELL")) {
-            res.stopLoss = res.entryPrice + (res.atr * 1.5);
-            res.takeProfit1 = res.entryPrice - (res.atr * 1.5);
-            res.takeProfit2 = res.entryPrice - (res.atr * 3.0);
-        } else {
-            res.stopLoss = res.entryPrice - 5.0;
-            res.takeProfit1 = res.entryPrice + 5.0;
-            res.takeProfit2 = res.entryPrice + 10.0;
+    List<PaperTrade> loadPaperTrades() {
+        List<PaperTrade> list = new ArrayList<>();
+        List<PortfolioManager.PortfolioTrade> pList = PortfolioManager.loadTrades(prefs);
+        for (PortfolioManager.PortfolioTrade pt : pList) {
+            PaperTrade t = new PaperTrade();
+            t.id = pt.id;
+            t.date = pt.date;
+            t.symbol = pt.symbol;
+            t.type = pt.type;
+            t.entryPrice = pt.entryPrice;
+            t.stopLoss = pt.stopLoss;
+            t.tp1 = pt.tp1;
+            t.tp2 = pt.tp2;
+            t.status = pt.status;
+            t.pnl = pt.pnl;
+            t.notes = pt.notes;
+            list.add(t);
         }
+        return list;
+    }
 
-        res.riskRewardRatio = 1.5;
-        double capital = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
-        double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
-        double maxRiskUsd = capital * (riskPct / 100.0);
-        double riskDiff = Math.max(1.0, Math.abs(res.entryPrice - res.stopLoss));
-        res.suggestedLot = maxRiskUsd / (riskDiff * 100.0);
-        res.arabicExplanation = miRes.signalReason;
+    void savePaperTrades(List<PaperTrade> list) {
+        List<PortfolioManager.PortfolioTrade> pList = PortfolioManager.loadTrades(prefs);
+        for (PaperTrade t : list) {
+            boolean found = false;
+            for (PortfolioManager.PortfolioTrade pt : pList) {
+                if (pt.id.equals(t.id)) {
+                    pt.status = t.status;
+                    pt.pnl = t.pnl;
+                    pt.notes = t.notes;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                PortfolioManager.PortfolioTrade pt = new PortfolioManager.PortfolioTrade();
+                pt.id = t.id;
+                pt.date = t.date;
+                pt.symbol = t.symbol;
+                pt.type = t.type;
+                pt.entryPrice = t.entryPrice;
+                pt.stopLoss = t.stopLoss;
+                pt.tp1 = t.tp1;
+                pt.tp2 = t.tp2;
+                pt.status = t.status;
+                pt.pnl = t.pnl;
+                pt.notes = t.notes;
+                pList.add(pt);
+            }
+        }
+        PortfolioManager.saveTrades(prefs, pList);
+    }
 
-        executePaperTradeFromSignal(res);
+    static class PaperTrade {
+        String id, date, symbol, type, status, notes;
+        double entryPrice, stopLoss, tp1, tp2, pnl;
     }
 
     // --- SCREEN 3: BACKTESTING ---
@@ -757,7 +845,7 @@ public class MainActivity extends Activity {
                     try {
                         bars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
                     } catch (Exception e) {
-                        // Fall back to generated bars if network fails
+                        // Fall back to generated bars
                     }
                 }
 
@@ -854,7 +942,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         miStatus.setText("✅ اكتمل تحليل ذكاء السوق بنجاح!");
                         miStatus.setTextColor(Color.GREEN);
-                        showMarketIntelligenceScreen(); // Refresh view to render result
+                        showMarketIntelligenceScreen();
                     });
                 } catch (Exception e) {
                     runOnUiThread(() -> {
@@ -944,13 +1032,40 @@ public class MainActivity extends Activity {
 
         signalCard.addView(createTextView("\n⛔ ملحوظة: لا يتم تنفيذ أي تداول حقيقي تلقائياً. هذه إشارة تحليلية تعليمية.", 12, false));
 
-        // Paper trading button for MI signal
         Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى التداول الورقي", v -> executePaperTradeFromMiSignal(r));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 12, 0, 0);
         signalCard.addView(sendPaperBtn, lp);
 
         content.addView(signalCard);
+    }
+
+    void executePaperTradeFromMiSignal(MarketIntelligenceEngine.Result miRes) {
+        GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
+        res.currentPrice = miRes.currentPrice > 0 ? miRes.currentPrice : 2650.0;
+        res.signal = miRes.educationalSignal;
+        res.confidenceScore = miRes.confidenceScore;
+        res.entryPrice = res.currentPrice;
+        res.atr = miRes.atr14 > 0 ? miRes.atr14 : 3.0;
+
+        if (res.signal.contains("BUY")) {
+            res.stopLoss = res.entryPrice - (res.atr * 1.5);
+            res.takeProfit1 = res.entryPrice + (res.atr * 1.5);
+            res.takeProfit2 = res.entryPrice + (res.atr * 3.0);
+        } else if (res.signal.contains("SELL")) {
+            res.stopLoss = res.entryPrice + (res.atr * 1.5);
+            res.takeProfit1 = res.entryPrice - (res.atr * 1.5);
+            res.takeProfit2 = res.entryPrice - (res.atr * 3.0);
+        } else {
+            res.stopLoss = res.entryPrice - 5.0;
+            res.takeProfit1 = res.entryPrice + 5.0;
+            res.takeProfit2 = res.entryPrice + 10.0;
+        }
+
+        res.riskRewardRatio = 1.5;
+        res.arabicExplanation = miRes.signalReason;
+
+        executePaperTradeFromSignalWithSource(res, "ذكاء السوق");
     }
 
     // --- FALLBACK DATA GENERATORS ---

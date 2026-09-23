@@ -585,7 +585,6 @@ public class MarketIntelligenceEngine {
     }
 
     private void evaluateIndicators(Result r) {
-        // 1. RSI Evaluation
         String rsiStatusStr = r.rsi14 >= 70 ? "تشبع شرائي (Overbought)" :
                 r.rsi14 <= 30 ? "تشبع بيعي (Oversold)" :
                         r.rsi14 >= 50 ? "إيجابي / منطقة قوة شرائية" : "سلبي / منطقة ضغط بيعي";
@@ -594,28 +593,23 @@ public class MarketIntelligenceEngine {
                         r.rsi14 >= 50 ? "يدعم استمرار العزم الصعودي." : "يدعم استمرار العزم الهبوطي.";
         r.rsiEvaluation = String.format(Locale.US, "القراءة: %.2f (%s) | التأثير: %s", r.rsi14, rsiStatusStr, rsiImpactStr);
 
-        // 2. MACD Evaluation
         String macdStatusStr = r.macdHistogram > 0 ? "أشرطة موجبة (زخم صعودي)" : "أشرطة سالبة (زخم هبوطي)";
         String macdImpactStr = r.macdHistogram > 0 ? "يعزز فرص إشارات الشراء لمطابقة الزخم." : "يعزز فرص إشارات البيع لمطابقة الزخم.";
         r.macdEvaluation = String.format(Locale.US, "القراءة: %.5f (%s) | التأثير: %s", r.macdHistogram, macdStatusStr, macdImpactStr);
 
-        // 3. EMA Evaluation
         String emaStatusStr = (r.ema20 > r.ema50 && r.ema50 > r.ema200) ? "ترتيب صاعد مثالي (EMA20 > EMA50 > EMA200)" :
                 (r.ema20 < r.ema50 && r.ema50 < r.ema200) ? "ترتيب هابط محكم (EMA20 < EMA50 < EMA200)" : "تداخل في المتوسطات المتحركة";
         String emaImpactStr = (r.ema20 > r.ema50) ? "السعر يتحرك أعلى المتوسطات مما يوفر دعمًا ديناميكيًا." : "السعر يتحرك أسفل المتوسطات مما يمثل مقاومة ديناميكية.";
         r.emaEvaluation = String.format(Locale.US, "EMA20=$%.2f | EMA50=$%.2f | EMA200=$%.2f\nالحالة: %s | التأثير: %s", r.ema20, r.ema50, r.ema200, emaStatusStr, emaImpactStr);
 
-        // 4. ATR Evaluation
         String atrImpactStr = r.atr14 >= 4.0 ? "يتطلب توسيع وقف الخسارة وتقليل حجم اللوت لحماية رأس المال." :
                 r.atr14 >= 2.0 ? "معدل تقلب طبيعي يسمح بوضع أهداف وقف خسارة وجني أرباح متوازنة." : "تقلب ضيق يشير إلى قرب انفجار سعري المرتقب.";
         r.atrEvaluation = String.format(Locale.US, "القراءة: $%.2f (%s) | التأثير: %s", r.atr14, r.volatility, atrImpactStr);
 
-        // 5. Trend Evaluation
         String trendImpactStr = r.trend.contains("صاعد") ? "تفضيل صفقات الشراء والامتناع عن معاكسة الاتجاه." :
                 r.trend.contains("هابط") ? "تفضيل صفقات البيع والامتناع عن الشراء المعاكس." : "الانتظار لحين خروج السعر من الحركة العرضية.";
         r.trendEvaluation = String.format(Locale.US, "الاتجاه: %s | قوة الاتجاه: %s | التأثير: %s", r.trend, r.trendStrength, trendImpactStr);
 
-        // 6. Support & Resistance Evaluation
         double distSupport = Math.abs(r.currentPrice - r.support);
         double distResist = Math.abs(r.resistance - r.currentPrice);
         String srImpactStr = distResist < distSupport ? "السعر قريب من مستوى المقاومة ($" + String.format(Locale.US, "%.2f", r.resistance) + ") — يجب الحذر عند الشراء." :
@@ -630,20 +624,17 @@ public class MarketIntelligenceEngine {
         boolean buyConditions = r.currentPrice > r.ema50 && r.rsi14 >= 45 && r.rsi14 <= 68 && r.macdHistogram > 0 && r.ema20 > r.ema50;
         boolean sellConditions = r.currentPrice < r.ema50 && r.rsi14 <= 55 && r.rsi14 >= 32 && r.macdHistogram < 0 && r.ema20 < r.ema50;
 
-        int totalIndicatorsEvaluated = 5;
         int alignedCount = 0;
 
         if (buyConditions && !sellConditions) {
             r.educationalSignal = "BUY SETUP 🟢";
 
-            // Count supporting
             if (r.currentPrice > r.ema50) { r.supportingIndicators.add("السعر أعلى من EMA50"); alignedCount++; }
             if (r.ema20 > r.ema50) { r.supportingIndicators.add("ترتيب المتوسطات صاعد (EMA20 > EMA50)"); alignedCount++; }
             if (r.macdHistogram > 0) { r.supportingIndicators.add("زخم MACD موجَب وإيجابي"); alignedCount++; }
             if (r.rsi14 >= 45 && r.rsi14 <= 68) { r.supportingIndicators.add("مؤشر RSI متوازن (" + String.format(Locale.US, "%.1f", r.rsi14) + ")"); alignedCount++; }
             if (r.relativeVolume >= 1.0) { r.supportingIndicators.add("حجم تداول أعلى من المتوسط"); alignedCount++; }
 
-            // Count conflicting
             if (r.currentPrice >= r.resistance - (r.atr14 * 0.5)) {
                 r.conflictingIndicators.add("السعر قريب جداً من مستوى المقاومة ($" + String.format(Locale.US, "%.2f", r.resistance) + ")");
             }
