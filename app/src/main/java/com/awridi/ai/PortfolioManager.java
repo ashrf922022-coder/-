@@ -265,37 +265,6 @@ public class PortfolioManager {
     }
 
     // --- Trade Operations ---
-    public static void executeTradeFromSignal(SharedPreferences prefs, MainActivity.AnalysisResult res) {
-        List<PortfolioTrade> list = loadTrades(prefs);
-        PortfolioTrade t = new PortfolioTrade();
-        t.id = UUID.randomUUID().toString();
-        t.date = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date());
-        t.symbol = MainActivity.GOLD_SYMBOL;
-        t.type = (res.signal != null && res.signal.contains("BUY")) ? "BUY" : "SELL";
-        t.entryPrice = res.entryPrice;
-        t.exitPrice = 0.0;
-        t.stopLoss = res.stopLoss;
-        t.tp1 = res.takeProfit1;
-        t.tp2 = res.takeProfit2;
-
-        double capital = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_CAPITAL, "10000"));
-        double riskPct = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_RISK_PCT, "1.0"));
-        double riskAmount = capital * (riskPct / 100.0);
-        t.riskAmount = riskAmount;
-
-        double riskDiff = Math.abs(res.entryPrice - res.stopLoss);
-        t.lotSize = res.suggestedLot > 0 ? res.suggestedLot : (riskDiff > 0 ? riskAmount / (riskDiff * 100.0) : 0.1);
-        t.rrRatio = res.riskRewardRatio > 0 ? res.riskRewardRatio : 1.5;
-
-        t.status = "OPEN";
-        t.pnl = 0.0;
-        t.notes = "صفقة منفذة بناءً على تحليل محرك AWRIDI AI";
-        t.entryReason = res.arabicExplanation != null ? res.arabicExplanation : "إشارة تداول توافق الشروط التقنية للذهب";
-
-        list.add(t);
-        saveTrades(prefs, list);
-    }
-
     public static void executeTradeFromSignal(SharedPreferences prefs, GoldAnalysisEngine.AnalysisResult res) {
         List<PortfolioTrade> list = loadTrades(prefs);
         PortfolioTrade t = new PortfolioTrade();

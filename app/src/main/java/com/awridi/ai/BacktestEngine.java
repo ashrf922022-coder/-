@@ -1,6 +1,7 @@
 package com.awridi.ai;
 
 import android.content.SharedPreferences;
+import java.util.ArrayList;
 import java.util.List;
 
 public class BacktestEngine {
@@ -8,8 +9,8 @@ public class BacktestEngine {
     public static class BacktestResult {
         public int totalTrades;
         public double winRate, lossRate;
-        public double grossProfit, grossLoss, profitFactor, maxDrawdown;
-        public double avgWin, avgLoss;
+        public double grossProfit, grossLoss, netPnl, profitFactor, maxDrawdown;
+        public double avgWin, avgLoss, largestLoss;
         public int longestLosingStreak;
         public double finalCapital;
     }
@@ -48,9 +49,12 @@ public class BacktestEngine {
                         break;
                     } else if (futureBar.l <= sl) {
                         losses++;
-                        double pnl = atr * 1.5 * 10;
-                        cash -= pnl;
-                        bt.grossLoss += pnl;
+                        double lossAmt = atr * 1.5 * 10;
+                        cash -= lossAmt;
+                        bt.grossLoss += lossAmt;
+                        if (lossAmt > bt.largestLoss) {
+                            bt.largestLoss = lossAmt;
+                        }
                         currentLossStreak++;
                         if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
                         i = j;
@@ -59,11 +63,12 @@ public class BacktestEngine {
                 }
             }
             peak = Math.max(peak, cash);
-            double dd = (peak - cash) / peak;
+            double dd = peak > 0 ? (peak - cash) / peak : 0;
             if (dd > bt.maxDrawdown) bt.maxDrawdown = dd;
         }
 
         bt.finalCapital = cash;
+        bt.netPnl = bt.grossProfit - bt.grossLoss;
         bt.winRate = bt.totalTrades > 0 ? (double) wins / bt.totalTrades : 0;
         bt.lossRate = bt.totalTrades > 0 ? (double) losses / bt.totalTrades : 0;
         bt.profitFactor = bt.grossLoss > 0 ? bt.grossProfit / bt.grossLoss : (bt.grossProfit > 0 ? 99.0 : 0);
@@ -72,5 +77,15 @@ public class BacktestEngine {
         bt.longestLosingStreak = maxLossStreak;
 
         return bt;
+    }
+
+    public static BacktestResult runMarketIntelligenceBacktest(List<MarketIntelligenceEngine.Bar> miBars, SharedPreferences prefs) {
+        List<GoldAnalysisEngine.Bar> goldBars = new ArrayList<>();
+        if (miBars != null) {
+            for (MarketIntelligenceEngine.Bar b : miBars) {
+                goldBars.add(new GoldAnalysisEngine.Bar(b.open, b.high, b.low, b.close, b.volume));
+            }
+        }
+        return runGoldBacktest(goldBars, prefs);
     }
 }
