@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     // Current Analysis Caches
     GoldAnalysisEngine.AnalysisResult currentAnalysis = null;
     MarketIntelligenceEngine.Result currentMiResult = null;
+    TradeSetup currentTradeSetup = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -312,6 +313,18 @@ public class MainActivity extends Activity {
                 GoldAnalysisEngine.AnalysisResult result = GoldAnalysisEngine.analyzeGold(mtfBars, prefs);
                 currentAnalysis = result;
 
+                // Evaluate TradeSetup using TradeSetupEngine
+                List<GoldAnalysisEngine.Bar> baseBars = mtfBars.get("15min");
+                if (baseBars == null || baseBars.isEmpty()) {
+                    baseBars = mtfBars.values().iterator().next();
+                }
+                List<MarketIntelligenceEngine.Bar> miBars = new ArrayList<>();
+                for (GoldAnalysisEngine.Bar gb : baseBars) {
+                    miBars.add(new MarketIntelligenceEngine.Bar(gb.o, gb.h, gb.l, gb.c, gb.v));
+                }
+                TradeSetupEngine setupEngine = new TradeSetupEngine();
+                currentTradeSetup = setupEngine.createTradeSetup(miBars);
+
                 runOnUiThread(() -> {
                     statusText.setText("✅ اكتمل التحليل بنجاح!");
                     statusText.setTextColor(Color.GREEN);
@@ -350,7 +363,42 @@ public class MainActivity extends Activity {
         signalCard.addView(createTextView("نسبة توافق الشروط (الثقة): " + String.format(Locale.US, "%.0f%%", res.confidenceScore * 100), 14, true));
         content.addView(signalCard);
 
-        if (res.signal.contains("SETUP")) {
+        // Display Trade Setup Box (Phase 4 TradeSetupEngine)
+        if (currentTradeSetup != null) {
+            LinearLayout setupCard = createCardBox();
+            setupCard.addView(createTextView("🎯 إعداد الصفقة الاحترافي (Trade Setup)", 16, true));
+
+            if (currentTradeSetup.valid) {
+                TextView setupDirTv = createTextView("اتجاه الإعداد: " + currentTradeSetup.direction.name(), 18, true);
+                setupDirTv.setTextColor(currentTradeSetup.direction == TradeSetup.Direction.BUY ? Color.GREEN : Color.RED);
+                setupCard.addView(setupDirTv);
+
+                setupCard.addView(createTextView("• سعر الدخول (Entry Price): $" + String.format(Locale.US, "%.2f", currentTradeSetup.entryPrice), 14, true));
+                setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", currentTradeSetup.stopLoss) + " (مسافة: " + String.format(Locale.US, "%.2f", currentTradeSetup.riskDistance) + ")", 14, true));
+                setupCard.addView(createTextView("• هدف الربح (Take Profit): $" + String.format(Locale.US, "%.2f", currentTradeSetup.takeProfit) + " (مسافة: " + String.format(Locale.US, "%.2f", currentTradeSetup.rewardDistance) + ")", 14, true));
+                setupCard.addView(createTextView("• نسبة المخاطرة إلى العائد (Risk/Reward): 1 : " + String.format(Locale.US, "%.2f", currentTradeSetup.riskRewardRatio), 14, true));
+                setupCard.addView(createTextView("• نسبة الثقة: " + String.format(Locale.US, "%.1f%%", currentTradeSetup.confidence), 14, false));
+                setupCard.addView(createTextView("• جودة الإشارة (Signal Quality): " + currentTradeSetup.signalQuality, 14, false));
+                setupCard.addView(createTextView("• حالة السوق (Market Regime): " + (currentTradeSetup.marketRegime != null ? currentTradeSetup.marketRegime.name() : "غير محدد"), 14, false));
+
+                Button paperBtn = createButton("📝 فتح صفقة تجريبية بإعداد Trade Setup", v -> executePaperTradeFromSetup(currentTradeSetup));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                lp.setMargins(0, 10, 0, 0);
+                setupCard.addView(paperBtn, lp);
+            } else {
+                TextView setupWaitTv = createTextView("WAIT / NO TRADE — لا يوجد إعداد صفقة صالح حاليًا", 16, true);
+                setupWaitTv.setTextColor(Color.YELLOW);
+                setupCard.addView(setupWaitTv);
+
+                if (!currentTradeSetup.conflictingFactors.isEmpty()) {
+                    setupCard.addView(createTextView("سبب عدم توفر Trade Setup صالح:", 13, true));
+                    for (String con : currentTradeSetup.conflictingFactors) {
+                        setupCard.addView(createTextView(" • " + con, 13, false));
+                    }
+                }
+            }
+            content.addView(setupCard);
+        } else if (res.signal.contains("SETUP")) {
             LinearLayout tradeCard = createCardBox();
             tradeCard.addView(createTextView("📐 خطة إدارة المخاطر للصفقة", 16, true));
             tradeCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", res.entryPrice), 14, false));
@@ -717,6 +765,21 @@ public class MainActivity extends Activity {
         });
         builder.setNegativeButton("إلغاء", null);
         builder.show();
+    }
+
+    void executePaperTradeFromSetup(TradeSetup setup) {
+        GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
+        res.currentPrice = setup.entryPrice;
+        res.signal = setup.direction == TradeSetup.Direction.BUY ? "BUY SETUP 🟢" : "SELL SETUP 🔴";
+        res.confidenceScore = setup.confidence / 100.0;
+        res.entryPrice = setup.entryPrice;
+        res.stopLoss = setup.stopLoss;
+        res.takeProfit1 = setup.takeProfit;
+        res.takeProfit2 = setup.takeProfit;
+        res.riskRewardRatio = setup.riskRewardRatio;
+        res.arabicExplanation = setup.explanation;
+
+        executePaperTradeFromSignalWithSource(res, "TradeSetup Engine");
     }
 
     void executePaperTradeFromSignal(GoldAnalysisEngine.AnalysisResult res) {
