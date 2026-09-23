@@ -91,6 +91,33 @@ public class SignalScoringEngine {
             res.conflictingFactors.add("بنية السعر هابطة: " + res.priceStructure);
         }
 
+        // Factor 7: Market Regime Support / Warning
+        if (res.marketRegime != null && res.marketRegime.regime != null) {
+            switch (res.marketRegime.regime) {
+                case TREND_UP:
+                    bullishScore++;
+                    res.supportingFactors.add("حالة السوق الداعمة: اتجاه صاعد مؤكد (TREND_UP)");
+                    break;
+                case TREND_DOWN:
+                    bearishScore++;
+                    res.conflictingFactors.add("حالة السوق الداعمة للبيع: اتجاه هابط مؤكد (TREND_DOWN)");
+                    break;
+                case RANGE:
+                    res.conflictingFactors.add("حالة السوق عرضية (RANGE) — تقلل جودة إشارات الاتجاه");
+                    break;
+                case HIGH_VOLATILITY:
+                    res.conflictingFactors.add("تحذير: حالة السوق عالية التقلب (HIGH_VOLATILITY) ترفع المخاطر التشغيلية");
+                    break;
+                case LOW_VOLATILITY:
+                    res.supportingFactors.add("حالة السوق منخفضة التقلب (LOW_VOLATILITY) — استقرار ونطاق ضيق");
+                    break;
+                case TRANSITION:
+                case UNCERTAIN:
+                    res.conflictingFactors.add("تحذير: حالة السوق في مرحلة انتقال أو عدم يقين (" + res.marketRegime.regime.name() + ") تخفض نسبة الثقة");
+                    break;
+            }
+        }
+
         // Volatility Factor Warning
         if (res.atrValue >= 4.5) {
             res.conflictingFactors.add("تحذير: تقلب حاد وغير آمن في الأسواق (ATR = " + String.format(Locale.US, "%.2f", res.atrValue) + ")");
@@ -120,11 +147,20 @@ public class SignalScoringEngine {
             res.confidence = ((double) dominantScore / totalActive) * 100.0;
         }
 
+        // Cap confidence or penalize quality if Market Regime is RANGE or TRANSITION/UNCERTAIN
+        if (res.marketRegime != null && res.marketRegime.regime != null) {
+            if (res.marketRegime.regime == MarketRegimeResult.Regime.RANGE ||
+                res.marketRegime.regime == MarketRegimeResult.Regime.TRANSITION ||
+                res.marketRegime.regime == MarketRegimeResult.Regime.UNCERTAIN) {
+                res.confidence = Math.max(0.0, res.confidence - 10.0);
+            }
+        }
+
         // Determine Decision and Signal Quality
         if (bullishScore >= 3 && minorScore <= 1 && res.rsi < 70) {
             res.direction = TradingDecisionResult.Direction.BULLISH;
             if (res.confidence >= 80.0 && bullishScore >= 4) {
-                res.signalQuality = "HIGH";
+                res.signalQuality = (res.marketRegime != null && res.marketRegime.regime == MarketRegimeResult.Regime.RANGE) ? "MEDIUM" : "HIGH";
                 res.decision = TradingDecisionResult.Decision.BUY;
             } else if (res.confidence >= 60.0) {
                 res.signalQuality = "MEDIUM";
@@ -136,7 +172,7 @@ public class SignalScoringEngine {
         } else if (bearishScore >= 3 && minorScore <= 1 && res.rsi > 30) {
             res.direction = TradingDecisionResult.Direction.BEARISH;
             if (res.confidence >= 80.0 && bearishScore >= 4) {
-                res.signalQuality = "HIGH";
+                res.signalQuality = (res.marketRegime != null && res.marketRegime.regime == MarketRegimeResult.Regime.RANGE) ? "MEDIUM" : "HIGH";
                 res.decision = TradingDecisionResult.Decision.SELL;
             } else if (res.confidence >= 60.0) {
                 res.signalQuality = "MEDIUM";
