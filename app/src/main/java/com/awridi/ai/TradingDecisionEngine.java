@@ -18,6 +18,11 @@ public class TradingDecisionEngine {
         if (bars == null || bars.size() < 30) {
             result.decision = TradingDecisionResult.Decision.NO_TRADE;
             result.direction = TradingDecisionResult.Direction.UNKNOWN;
+            result.signalQuality = "INVALID";
+            result.confidence = 0.0;
+            result.bullishScore = 0;
+            result.bearishScore = 0;
+            result.totalScore = 0;
             result.conflictingFactors.add("بيانات غير كافية للتحليل (تتطلب 30 شمعة على الأقل)");
             result.arabicExplanation = "عدم إمكانية إتخاذ قرار تداول لقلة البيانات المتاحة (بيانات غير كافية).";
             return result;
@@ -74,6 +79,11 @@ public class TradingDecisionEngine {
             TradingDecisionResult result = new TradingDecisionResult();
             result.decision = TradingDecisionResult.Decision.NO_TRADE;
             result.direction = TradingDecisionResult.Direction.UNKNOWN;
+            result.signalQuality = "INVALID";
+            result.confidence = 0.0;
+            result.bullishScore = 0;
+            result.bearishScore = 0;
+            result.totalScore = 0;
             result.conflictingFactors.add("مؤشر الشمعة غير صالح أو خارج النطاق");
             result.arabicExplanation = "بيانات غير صالحة لاتخاذ قرار عند هذه الشمعة.";
             return result;
@@ -164,94 +174,15 @@ public class TradingDecisionEngine {
     }
 
     private void evaluateMultiFactorDecision(TradingDecisionResult res) {
-        int bullishScore = 0;
-        int bearishScore = 0;
-
-        res.supportingFactors.clear();
-        res.conflictingFactors.clear();
-
-        // 1. Trend factors
-        if (res.currentPrice > res.ema50) {
-            bullishScore++;
-            res.supportingFactors.add("السعر أعلى من المتوسط المتحرك EMA50 ($" + String.format(Locale.US, "%.2f", res.ema50) + ")");
-        } else {
-            bearishScore++;
-            res.conflictingFactors.add("السعر أسفل من المتوسط المتحرك EMA50 ($" + String.format(Locale.US, "%.2f", res.ema50) + ")");
-        }
-
-        if (res.ema20 > res.ema50) {
-            bullishScore++;
-            res.supportingFactors.add("ترتيب المتوسطات صاعد (EMA20 > EMA50)");
-        } else {
-            bearishScore++;
-            res.conflictingFactors.add("ترتيب المتوسطات هابط (EMA20 < EMA50)");
-        }
-
-        if (res.currentPrice > res.ema200) {
-            bullishScore++;
-            res.supportingFactors.add("السعر أعلى من المتوسط المتحرك الرئيسي EMA200");
-        } else {
-            bearishScore++;
-            res.conflictingFactors.add("السعر أسفل من المتوسط المتحرك الرئيسي EMA200");
-        }
-
-        // 2. Momentum factors
-        if (res.macdHist > 0) {
-            bullishScore++;
-            res.supportingFactors.add("زخم MACD موجب وإيجابي (" + String.format(Locale.US, "%.4f", res.macdHist) + ")");
-        } else if (res.macdHist < 0) {
-            bearishScore++;
-            res.conflictingFactors.add("زخم MACD سالب وسلبي (" + String.format(Locale.US, "%.4f", res.macdHist) + ")");
-        }
-
-        if (res.rsi >= 45 && res.rsi <= 68) {
-            bullishScore++;
-            res.supportingFactors.add("مؤشر RSI مستقر في النطاق الصاعد (" + String.format(Locale.US, "%.1f", res.rsi) + ")");
-        } else if (res.rsi <= 55 && res.rsi >= 32) {
-            bearishScore++;
-            res.conflictingFactors.add("مؤشر RSI في النطاق الهابط (" + String.format(Locale.US, "%.1f", res.rsi) + ")");
-        }
-
-        // Extreme RSI Warning
-        if (res.rsi >= 70) {
-            res.conflictingFactors.add("مؤشر RSI في منطقة تشبع شرائي (" + String.format(Locale.US, "%.1f", res.rsi) + ")");
-        } else if (res.rsi <= 30) {
-            res.supportingFactors.add("مؤشر RSI في منطقة تشبع بيعي (" + String.format(Locale.US, "%.1f", res.rsi) + ")");
-        }
-
-        // 3. Volatility factor
-        if (res.atrValue >= 4.5) {
-            res.conflictingFactors.add("تقلب حاد وغير آمن في الأسواق (ATR = " + String.format(Locale.US, "%.2f", res.atrValue) + ")");
-        }
-
-        // 4. Price Structure factor
-        if (res.priceStructure.contains("اختراق مقاومة") || res.priceStructure.contains("رفض هبوطي") || res.priceStructure.contains("قمم وقيعان أعلى")) {
-            bullishScore++;
-            res.supportingFactors.add("بنية السعر صاعدة: " + res.priceStructure);
-        } else if (res.priceStructure.contains("كسر دعم") || res.priceStructure.contains("رفض صعودي") || res.priceStructure.contains("قمم وقيعان أدنى")) {
-            bearishScore++;
-            res.conflictingFactors.add("بنية السعر هابطة: " + res.priceStructure);
-        }
-
-        // Final Decision Determination
-        if (res.atrValue >= 4.5) {
-            res.decision = TradingDecisionResult.Decision.NO_TRADE;
-            res.direction = TradingDecisionResult.Direction.UNKNOWN;
-        } else if (bullishScore >= 3 && bearishScore <= 1 && res.rsi < 70) {
-            res.decision = TradingDecisionResult.Decision.BUY;
-            res.direction = TradingDecisionResult.Direction.BULLISH;
-        } else if (bearishScore >= 3 && bullishScore <= 1 && res.rsi > 30) {
-            res.decision = TradingDecisionResult.Decision.SELL;
-            res.direction = TradingDecisionResult.Direction.BEARISH;
-        } else {
-            res.decision = TradingDecisionResult.Decision.WAIT;
-            res.direction = TradingDecisionResult.Direction.NEUTRAL;
-        }
+        SignalScoringEngine.evaluateScore(res);
     }
 
     private void generateArabicRationale(TradingDecisionResult res) {
         StringBuilder sb = new StringBuilder();
         sb.append("• القرار النهائي: ").append(res.decision.name()).append("\n");
+        sb.append("• جودة الإشارة: ").append(res.signalQuality).append("\n");
+        sb.append("• نسبة الثقة: ").append(String.format(Locale.US, "%.1f%%", res.confidence)).append("\n");
+        sb.append("• النقاط الفنية: صاعدة (").append(res.bullishScore).append(") | هابطة (").append(res.bearishScore).append(") | الإجمالي (").append(res.totalScore).append(")\n");
         sb.append("• الاتجاه الفني: ").append(res.trend).append(" (قوة الاتجاه: ").append(res.trendStrength).append(")\n");
         sb.append("• حالة الزخم: ").append(res.momentum).append(" | RSI: ").append(String.format(Locale.US, "%.1f", res.rsi)).append("\n");
         sb.append("• مستوى التقلب ATR: ").append(String.format(Locale.US, "%.2f", res.atrValue)).append(" (").append(res.volatility).append(")\n");

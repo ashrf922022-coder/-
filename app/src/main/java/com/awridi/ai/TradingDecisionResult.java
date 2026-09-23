@@ -41,6 +41,12 @@ public class TradingDecisionResult {
     public double rsi = 50.0;
     public double macdHist = 0.0;
 
+    public int bullishScore = 0;
+    public int bearishScore = 0;
+    public int totalScore = 0;
+    public double confidence = 0.0; // Confidence % (0.0 to 100.0)
+    public String signalQuality = "INVALID"; // "HIGH", "MEDIUM", "LOW", "INVALID"
+
     public List<String> supportingFactors = new ArrayList<>();
     public List<String> conflictingFactors = new ArrayList<>();
     public String arabicExplanation = "";
@@ -51,6 +57,11 @@ public class TradingDecisionResult {
                 "symbol='" + symbol + '\'' +
                 ", direction=" + direction +
                 ", decision=" + decision +
+                ", signalQuality='" + signalQuality + '\'' +
+                ", confidence=" + String.format(java.util.Locale.US, "%.1f%%", confidence) +
+                ", bullishScore=" + bullishScore +
+                ", bearishScore=" + bearishScore +
+                ", totalScore=" + totalScore +
                 ", timestamp=" + timestamp +
                 ", trend='" + trend + '\'' +
                 ", momentum='" + momentum + '\'' +
