@@ -824,7 +824,7 @@ String[] keys = {
                     LinearLayout resCard = createCardBox();
                     resCard.addView(createTextView("📊 نتائج اختبار استراتيجية الذهب XAU/USD", 18, true));
                     resCard.addView(createTextView("• عدد الصفقات الكلي: " + bt.totalTrades + " (الرابحة: " + bt.winningTrades + " / الخاسرة: " + bt.losingTrades + ")", 14, false));
-                    resCard.addView(createTextView("• نسبة الصفقات الرابحة: " + String.format(Locale.US, "%.1f%%", bt.winRate * 100), 14, true));
+                    resCard.addView(createTextView("• نسبة الصفقات الرابحة (Win Rate): " + String.format(Locale.US, "%.1f%%", bt.winRate * 100), 14, true));
                     resCard.addView(createTextView("• نسبة الصفقات الخاسرة: " + String.format(Locale.US, "%.1f%%", bt.lossRate * 100), 14, false));
                     resCard.addView(createTextView("• إجمالي الأرباح (Gross Profit): $" + String.format(Locale.US, "%.2f", bt.grossProfit), 14, false));
                     resCard.addView(createTextView("• إجمالي الخسائر (Gross Loss): $" + String.format(Locale.US, "%.2f", bt.grossLoss), 14, false));
@@ -955,7 +955,8 @@ String[] keys = {
         else scoreTv.setTextColor(Color.YELLOW);
         scoreCard.addView(scoreTv);
 
-        scoreCard.addView(createTextView("السعر الحالي: $" + String.format(Locale.US, "%.2f", res.currentPrice) + " | الاتجاه: " + res.trend, 14, true));
+        scoreCard.addView(createTextView("السعر الحالي: $" + String.format(Locale.US, "%.2f", res.currentPrice) + " | الاتجاه: " + res.trend + " (" + res.trendStrength + ")", 14, true));
+        scoreCard.addView(createTextView("الزخم: " + res.momentum + " | التقلب: " + res.volatility, 13, false));
         content.addView(scoreCard);
 
         // 2. Educational Trading Signal Card
@@ -969,15 +970,15 @@ String[] keys = {
         else sigTv.setTextColor(Color.GRAY);
         signalCard.addView(sigTv);
 
-        signalCard.addView(createTextView("نسبة الثقة بالتوافق: " + String.format(Locale.US, "%.0f%%", res.confidenceScore), 14, true));
+        signalCard.addView(createTextView("نسبة الثقة بالتوافق (Confidence Score): " + String.format(Locale.US, "%.0f%%", res.confidenceScore), 14, true));
 
         if (res.signal.contains("SETUP")) {
-            signalCard.addView(createTextView("• سعر الدخول: $" + String.format(Locale.US, "%.2f", res.entryPrice), 13, false));
-            signalCard.addView(createTextView("• وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", res.stopLoss), 13, true));
-            signalCard.addView(createTextView("• الهدف الأول (TP1): $" + String.format(Locale.US, "%.2f", res.takeProfit1), 13, false));
-            signalCard.addView(createTextView("• الهدف الثاني (TP2): $" + String.format(Locale.US, "%.2f", res.takeProfit2), 13, false));
+            signalCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", res.entryPrice), 13, false));
+            signalCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", res.stopLoss), 13, true));
+            signalCard.addView(createTextView("• الهدف الأول (Take Profit 1): $" + String.format(Locale.US, "%.2f", res.takeProfit1), 13, false));
+            signalCard.addView(createTextView("• الهدف الثاني (Take Profit 2): $" + String.format(Locale.US, "%.2f", res.takeProfit2), 13, false));
 
-            Button forwardBtn = createButton("📝 تنفيذ الصفقة التجريبية في المحفظة", v -> {
+            Button forwardBtn = createButton("📝 إرسال الإشارة للتداول الورقي بالمحفظة", v -> {
                 AnalysisResult converted = new AnalysisResult();
                 converted.currentPrice = res.currentPrice;
                 converted.signal = res.signal;
@@ -1008,9 +1009,24 @@ String[] keys = {
         }
         content.addView(signalCard);
 
-        // 3. Technical Indicators Grid Card
+        // 3. Detailed Indicator Evaluation Section (Indicator Evaluation)
+        LinearLayout evalCard = createCardBox();
+        evalCard.addView(createTextView("🔍 تقييم ومساهمات المؤشرات في درجة الثقة", 16, true));
+
+        for (MarketIntelligenceEngine.IndicatorEvaluation eval : res.indicatorEvaluations) {
+            LinearLayout item = createCardBox();
+            item.addView(createTextView("📌 " + eval.name + ": " + eval.valueFormatted + " [" + eval.stance + "]", 14, true));
+            item.addView(createTextView("• المعنى والتشخيص: " + eval.meaning, 13, false));
+            TextView contribTv = createTextView("• المساهمة في الثقة: " + (eval.confidenceContribution >= 0 ? "+" : "") + eval.confidenceContribution + "%", 13, true);
+            contribTv.setTextColor(eval.confidenceContribution > 0 ? Color.GREEN : (eval.confidenceContribution < 0 ? Color.RED : mutedColor));
+            item.addView(contribTv);
+            evalCard.addView(item);
+        }
+        content.addView(evalCard);
+
+        // 4. Technical Indicators Grid Card
         LinearLayout indCard = createCardBox();
-        indCard.addView(createTextView("📊 المؤشرات التقنية وتحليل السيولة", 16, true));
+        indCard.addView(createTextView("📊 المستويات الفنية ونطاقات السيولة", 16, true));
         indCard.addView(createTextView("• RSI (14): " + String.format(Locale.US, "%.1f", res.rsi14), 13, false));
         indCard.addView(createTextView("• MACD Hist: " + String.format(Locale.US, "%.2f", res.macdHistogram) + " (" + res.momentum + ")", 13, false));
         indCard.addView(createTextView("• ATR (14): $" + String.format(Locale.US, "%.2f", res.atr14) + " (" + res.volatility + ")", 13, false));
@@ -1018,12 +1034,12 @@ String[] keys = {
         indCard.addView(createTextView("• المتوسطات الأسية: EMA20=$" + String.format(Locale.US, "%.1f", res.ema20) + " | EMA50=$" + String.format(Locale.US, "%.1f", res.ema50) + " | EMA200=$" + String.format(Locale.US, "%.1f", res.ema200), 13, false));
         indCard.addView(createTextView("• Bollinger Bands: Upper=$" + String.format(Locale.US, "%.1f", res.bollingerUpper) + " | Mid=$" + String.format(Locale.US, "%.1f", res.bollingerMiddle) + " | Lower=$" + String.format(Locale.US, "%.1f", res.bollingerLower), 13, false));
         indCard.addView(createTextView("• حجم التداول النسبي (Relative Volume): " + String.format(Locale.US, "%.2fx", res.relativeVolume), 13, false));
-        indCard.addView(createTextView("• مستويات الدعم والمقاومة: Resistance=$" + String.format(Locale.US, "%.2f", res.resistance) + " | Support=$" + String.format(Locale.US, "%.2f", res.support), 13, false));
+        indCard.addView(createTextView("• مستويات الدعم والمقاومة: Resistance R1=$" + String.format(Locale.US, "%.2f", res.resistance) + " | Support S1=$" + String.format(Locale.US, "%.2f", res.support), 13, false));
         indCard.addView(createTextView("• حالة Breakout: " + (res.breakout ? "نعم ⚡" : "لا") + " | حالة Pullback: " + (res.pullback ? "نعم 🔄" : "لا"), 13, false));
         indCard.addView(createTextView("• التشخيص الهيكلي: " + res.pattern, 13, true));
         content.addView(indCard);
 
-        // 4. Detailed Rationale & Explanation Card
+        // 5. Detailed Rationale & Explanation Card
         LinearLayout rationaleCard = createCardBox();
         rationaleCard.addView(createTextView("📖 التفسير والشرح العربي التفصيلي", 16, true));
         rationaleCard.addView(createTextView(res.explanation, 13, false));

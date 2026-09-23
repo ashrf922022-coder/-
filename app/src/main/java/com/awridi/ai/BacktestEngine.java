@@ -9,17 +9,10 @@ public class BacktestEngine {
         public int totalTrades;
         public int winningTrades;
         public int losingTrades;
-        public double winRate; // 0 to 1
-        public double lossRate; // 0 to 1
-        public double grossProfit;
-        public double grossLoss;
-        public double netProfit;
-        public double profitFactor;
-        public double maxDrawdown; // 0 to 1
-        public double avgWin;
-        public double avgLoss;
-        public double largestWin;
-        public double largestLoss;
+        public double winRate, lossRate;
+        public double grossProfit, grossLoss, netProfit, profitFactor, maxDrawdown;
+        public double avgWin, avgLoss;
+        public double largestWin, largestLoss;
         public int longestLosingStreak;
         public double startCapital;
         public double finalCapital;
@@ -28,10 +21,11 @@ public class BacktestEngine {
     public static BacktestResult runGoldBacktest(List<GoldAnalysisEngine.Bar> bars, SharedPreferences prefs) {
         BacktestResult bt = new BacktestResult();
         double startCap = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_CAPITAL, "10000"));
-        bt.startCapital = startCap;
         double cash = startCap, peak = cash;
         int wins = 0, losses = 0;
         int currentLossStreak = 0, maxLossStreak = 0;
+
+        bt.startCapital = startCap;
 
         for (int i = 50; i < bars.size() - 1; i++) {
             double rsi = GoldAnalysisEngine.calcRSI(bars, 14, i);
