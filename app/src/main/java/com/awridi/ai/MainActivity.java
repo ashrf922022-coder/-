@@ -842,78 +842,94 @@ void showMarketIntelligenceScreen() {
 
     LinearLayout card = createCardBox();
 
-    TextView title = createTextView(
-            "🧠 ذكاء السوق",
-            22,
-            Color.WHITE
-    );
+    TextView title = createTextView("🧠 ذكاء السوق", 22, true);
     card.addView(title);
 
-    TextView subtitle = createTextView(
-            "تحليل فني متقدم للسوق والاتجاه والسيولة",
-            14,
-            Color.LTGRAY
-    );
+    TextView subtitle = createTextView("تحليل فني متقدم للسوق والاتجاه والسيولة", 14, false);
+    subtitle.setTextColor(mutedColor);
     card.addView(subtitle);
 
-    TextView status = createTextView(
-            "اختر السوق والفاصل الزمني ثم ابدأ التحليل",
-            15,
-            Color.WHITE
-    );
+    TextView status = createTextView("اختر السوق والفاصل الزمني ثم ابدأ التحليل", 15, true);
     card.addView(status);
 
-    EditText symbolInput = createEditText("رمز الأصل — مثال: XAU/USD");
+    EditText symbolInput = createEditText("رمز الأصل — مثال: XAU/USD", GOLD_SYMBOL);
     card.addView(symbolInput);
 
-    EditText intervalInput = createEditText("الفاصل — مثال: 15min");
+    EditText intervalInput = createEditText("الفاصل — مثال: 15min", "15min");
     card.addView(intervalInput);
 
-    Button analyzeButton = createButton("🔍 تحليل السوق");
+    TextView indicatorsView = createTextView("", 14, false);
 
-    analyzeButton.setOnClickListener(v -> {
+    Button analyzeButton = createButton("🔍 تحليل السوق", v -> {
         String symbol = symbolInput.getText().toString().trim();
         String interval = intervalInput.getText().toString().trim();
 
-        if (symbol.isEmpty()) {
-            symbol = "XAU/USD";
+        if (symbol.isEmpty()) symbol = GOLD_SYMBOL;
+        if (interval.isEmpty()) interval = "15min";
+
+        status.setText("⏳ جارٍ تحليل " + symbol + " — " + interval + "...");
+        status.setTextColor(secondaryColor);
+
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
+        if (apiKey.isEmpty()) {
+            status.setText("⚠️ يرجى إدخال مفتاح Twelve Data API في الإعدادات أولًا.");
+            status.setTextColor(Color.YELLOW);
+            return;
         }
 
-        if (interval.isEmpty()) {
-            interval = "15min";
-        }
+        final String finalSymbol = symbol;
+        final String finalInterval = interval;
 
-        status.setText(
-                "⏳ جارٍ تحليل " + symbol + " — " + interval + "..."
-        );
+        executor.submit(() -> {
+            try {
+                List<Bar> bars = fetchTwelveData(finalSymbol, finalInterval, apiKey, 200);
+                if (bars == null || bars.isEmpty()) {
+                    throw new Exception("لم يتم استلام بيانات كافية من Twelve Data");
+                }
 
-        Toast.makeText(
-                MainActivity.this,
-                "سيتم تشغيل محرك ذكاء السوق",
-                Toast.LENGTH_SHORT
-        ).show();
+                List<MarketIntelligenceEngine.Bar> intelBars = new ArrayList<>();
+                for (Bar b : bars) {
+                    intelBars.add(new MarketIntelligenceEngine.Bar(b.o, b.h, b.l, b.c, b.v));
+                }
+
+                MarketIntelligenceEngine engine = new MarketIntelligenceEngine();
+                MarketIntelligenceEngine.Result result = engine.analyze(intelBars);
+
+                runOnUiThread(() -> {
+                    status.setText("✅ اكتمل تحليل " + finalSymbol + " بنجاح!");
+                    status.setTextColor(Color.GREEN);
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("\n📊 المؤشرات والنتائج الفنية:\n");
+                    sb.append("• الاتجاه: ").append(result.trend).append("\n");
+                    sb.append("• النمط: ").append(result.pattern).append("\n");
+                    sb.append(String.format(Locale.US, "• SMA 20: %.2f | SMA 50: %.2f\n", result.sma20, result.sma50));
+                    sb.append(String.format(Locale.US, "• EMA 20: %.2f | EMA 50: %.2f | EMA 200: %.2f\n", result.ema20, result.ema50, result.ema200));
+                    sb.append(String.format(Locale.US, "• RSI 14: %.2f\n", result.rsi14));
+                    sb.append(String.format(Locale.US, "• MACD Histogram: %.5f\n", result.macdHistogram));
+                    sb.append(String.format(Locale.US, "• ATR 14: %.5f\n", result.atr14));
+                    sb.append(String.format(Locale.US, "• Bollinger Bands (20,2): العلوي=%.2f | الأوسط=%.2f | السفلي=%.2f\n", result.bollingerUpper, result.bollingerMiddle, result.bollingerLower));
+                    sb.append(String.format(Locale.US, "• حجم التداول النسبي: %.2fx\n", result.relativeVolume));
+                    sb.append(String.format(Locale.US, "• الدعم: %.2f | المقاومة: %.2f\n", result.support, result.resistance));
+                    sb.append("• حالة الاختراق (Breakout): ").append(result.breakout ? "نعم 🚀" : "لا").append("\n");
+                    sb.append("• حالة الارتداد (Pullback): ").append(result.pullback ? "نعم 🟢" : "لا").append("\n\n");
+                    sb.append("🎯 درجة ذكاء السوق (Market Score): ").append(result.marketScore).append(" / 100\n\n");
+                    sb.append("📖 التفسير:\n").append(result.explanation);
+
+                    indicatorsView.setText(sb.toString());
+                    indicatorsView.setTextIsSelectable(true);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    status.setText("❌ خطأ أثناء التحليل: " + e.getMessage());
+                    status.setTextColor(Color.RED);
+                });
+            }
+        });
     });
 
     card.addView(analyzeButton);
-
-    TextView indicators = createTextView(
-            "\n📊 المؤشرات\n" +
-            "• SMA 20 / 50\n" +
-            "• EMA 20 / 50 / 200\n" +
-            "• RSI 14\n" +
-            "• MACD Histogram\n" +
-            "• ATR 14\n" +
-            "• Bollinger Bands 20 / 2\n" +
-            "• Volume\n\n" +
-            "📍 الدعم والمقاومة\n" +
-            "📈 Breakout / Pullback\n" +
-            "🧩 الأنماط التاريخية\n" +
-            "🎯 Market Score 0–100",
-            15,
-            Color.WHITE
-    );
-
-    card.addView(indicators);
+    card.addView(indicatorsView);
 
     content.addView(card);
 }
