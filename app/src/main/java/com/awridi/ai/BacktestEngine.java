@@ -323,66 +323,35 @@ public class BacktestEngine {
                 trade.entryReason = sigResult.signalReason != null ? sigResult.signalReason : "إشارة تداول فنية";
 
                 // 3. Forward Simulation
+                TradePosition pos = new TradePosition();
+                pos.tradeId = trade.id;
+                pos.direction = dir == TradeSetup.Direction.BUY ? TradePosition.Direction.BUY : TradePosition.Direction.SELL;
+                pos.status = TradePosition.Status.OPEN;
+                pos.entryPrice = entryPrice;
+                pos.stopLoss = sl;
+                pos.takeProfit = tp;
+                pos.positionSize = lotSize;
+                pos.riskAmount = riskAmountUsd;
+
+                TradeMonitorEngine monitorEngine = new TradeMonitorEngine();
+
                 boolean tradeClosed = false;
                 for (int j = i + 1; j < effectiveBarCount; j++) {
                     MarketIntelligenceEngine.Bar futureBar = bars.get(j);
+                    TradeMonitorEngine.MonitoringResult monRes = monitorEngine.monitorBar(pos, futureBar, cash);
 
-                    if (dir == TradeSetup.Direction.BUY) {
-                        if (futureBar.high >= tp) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = tp - (spreadCost / 2.0);
-                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "TP_HIT";
-                            trade.outcome = "WIN";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        } else if (futureBar.low <= sl) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = sl - (spreadCost / 2.0);
-                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "SL_HIT";
-                            trade.outcome = "LOSS";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        }
-                    } else { // SELL
-                        if (futureBar.low <= tp) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = tp + (spreadCost / 2.0);
-                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "TP_HIT";
-                            trade.outcome = "WIN";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        } else if (futureBar.high >= sl) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = sl + (spreadCost / 2.0);
-                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "SL_HIT";
-                            trade.outcome = "LOSS";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        }
+                    if (monRes.statusChanged && (pos.status == TradePosition.Status.TP_HIT || pos.status == TradePosition.Status.SL_HIT)) {
+                        trade.exitCandleIndex = j;
+                        trade.exitTime = "Bar_" + j;
+                        trade.exitPrice = pos.currentPrice;
+                        trade.pnlUsd = pos.realizedPnL - commissionUsd;
+                        trade.pnlPercentage = cash > 0 ? (trade.pnlUsd / cash) * 100.0 : 0.0;
+                        trade.exitReason = pos.status.name() + (pos.conflictType.equals("TP_SL_CONFLICT") ? "_CONFLICT" : "");
+                        trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
+                        trade.durationBars = j - i;
+                        tradeClosed = true;
+                        i = j;
+                        break;
                     }
                 }
 
@@ -732,6 +701,14 @@ public class BacktestEngine {
     /**
      * Backtest Execution using AIDecisionEngine candle-by-candle with strict zero Look-Ahead Bias.
      */
+    /**
+     * Executes paper trade backtest pipeline using PaperTradeEngine, AIDecisionEngine, and TradeMonitorEngine
+     * with strict zero Look-Ahead Bias and conservative TP/SL conflict policy.
+     */
+    public static BacktestResult runPaperTradeBacktest(List<MarketIntelligenceEngine.Bar> bars, BacktestParams params, SharedPreferences prefs) {
+        return runAIBacktest(bars, params, prefs);
+    }
+
     public static BacktestResult runAIBacktest(List<MarketIntelligenceEngine.Bar> bars, BacktestParams params, SharedPreferences prefs) {
         BacktestResult result = new BacktestResult();
         if (params == null) params = new BacktestParams();
@@ -821,66 +798,35 @@ public class BacktestEngine {
                 trade.spreadSlippageCostUsd = totalSpreadSlippageUsd;
                 trade.entryReason = "AI Decision: " + aiRes.decision.name() + " (Quality: " + aiRes.tradeQuality.name() + ")";
 
+                TradePosition pos = new TradePosition();
+                pos.tradeId = trade.id;
+                pos.direction = dir == TradeSetup.Direction.BUY ? TradePosition.Direction.BUY : TradePosition.Direction.SELL;
+                pos.status = TradePosition.Status.OPEN;
+                pos.entryPrice = entryPrice;
+                pos.stopLoss = sl;
+                pos.takeProfit = tp;
+                pos.positionSize = lotSize;
+                pos.riskAmount = riskAmountUsd;
+
+                TradeMonitorEngine monitorEngine = new TradeMonitorEngine();
+
                 boolean tradeClosed = false;
                 for (int j = i + 1; j < effectiveBarCount; j++) {
                     MarketIntelligenceEngine.Bar futureBar = bars.get(j);
+                    TradeMonitorEngine.MonitoringResult monRes = monitorEngine.monitorBar(pos, futureBar, cash);
 
-                    if (dir == TradeSetup.Direction.BUY) {
-                        if (futureBar.high >= tp) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = tp - (spreadCost / 2.0);
-                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "TP_HIT";
-                            trade.outcome = "WIN";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        } else if (futureBar.low <= sl) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = sl - (spreadCost / 2.0);
-                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "SL_HIT";
-                            trade.outcome = "LOSS";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        }
-                    } else { // SELL
-                        if (futureBar.low <= tp) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = tp + (spreadCost / 2.0);
-                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "TP_HIT";
-                            trade.outcome = "WIN";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        } else if (futureBar.high >= sl) {
-                            trade.exitCandleIndex = j;
-                            trade.exitTime = "Bar_" + j;
-                            trade.exitPrice = sl + (spreadCost / 2.0);
-                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                            trade.pnlUsd = rawPnl - commissionUsd;
-                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
-                            trade.exitReason = "SL_HIT";
-                            trade.outcome = "LOSS";
-                            trade.durationBars = j - i;
-                            tradeClosed = true;
-                            i = j;
-                            break;
-                        }
+                    if (monRes.statusChanged && (pos.status == TradePosition.Status.TP_HIT || pos.status == TradePosition.Status.SL_HIT)) {
+                        trade.exitCandleIndex = j;
+                        trade.exitTime = "Bar_" + j;
+                        trade.exitPrice = pos.currentPrice;
+                        trade.pnlUsd = pos.realizedPnL - commissionUsd;
+                        trade.pnlPercentage = cash > 0 ? (trade.pnlUsd / cash) * 100.0 : 0.0;
+                        trade.exitReason = pos.status.name() + (pos.conflictType.equals("TP_SL_CONFLICT") ? "_CONFLICT" : "");
+                        trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
+                        trade.durationBars = j - i;
+                        tradeClosed = true;
+                        i = j;
+                        break;
                     }
                 }
 
