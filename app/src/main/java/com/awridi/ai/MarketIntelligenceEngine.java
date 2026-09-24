@@ -56,6 +56,9 @@ public class MarketIntelligenceEngine {
 
         public int marketScore;
 
+        // Signal Engine integration (Phase 6)
+        public SignalEngine.SignalResult signalResult;
+
         // Trading Decision Engine integration
         public TradingDecisionResult tradingDecision;
 
@@ -130,7 +133,10 @@ public class MarketIntelligenceEngine {
 
         result.marketScore = calculateScore(result);
 
-        // Compute decision via TradingDecisionEngine layer
+        // Compute decision via SignalEngine & TradingDecisionEngine layer
+        SignalEngine signalEngine = new SignalEngine();
+        result.signalResult = signalEngine.generateSignal(bars);
+
         TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
         result.tradingDecision = decisionEngine.evaluate(bars);
 

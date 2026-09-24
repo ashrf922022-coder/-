@@ -370,6 +370,22 @@ public class PortfolioManager {
     }
 
     // --- Risk Management Validation ---
+    public static RiskValidationResult validateSignalRisk(SharedPreferences prefs, SignalEngine.SignalResult signalResult, String signalSource) {
+        if (signalResult == null || !signalResult.valid || signalResult.signalType == SignalEngine.SignalType.HOLD) {
+            RiskValidationResult res = new RiskValidationResult();
+            res.isAllowed = false;
+            res.messageArabic = signalResult == null ? "نتيجة محرك الإشارات غير متوفرة (null)." :
+                    (!signalResult.valid ? "الإشارة غير صالحة: " + signalResult.rejectionReason :
+                    "الإشارة الحالية هي HOLD (انتظار)، يمنع فتح صفقة تداول.");
+            return res;
+        }
+
+        TradeSetupEngine setupEngine = new TradeSetupEngine();
+        TradeSetup setup = setupEngine.createTradeSetupFromSignal(signalResult);
+
+        return validateTradeRisk(prefs, setup.entryPrice, setup.stopLoss, setup.takeProfit, setup.direction.name(), signalSource);
+    }
+
     public static RiskValidationResult validateTradeRisk(SharedPreferences prefs, double entryPrice, double stopLoss, double tp1, String signalType, String signalSource) {
         RiskValidationResult res = new RiskValidationResult();
         PortfolioSummary summary = calculateSummary(prefs);
