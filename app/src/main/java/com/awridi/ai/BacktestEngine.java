@@ -728,4 +728,257 @@ public class BacktestEngine {
     public static BacktestResult runMarketIntelligenceBacktest(List<MarketIntelligenceEngine.Bar> miBars, SharedPreferences prefs) {
         return runTradingDecisionBacktest(miBars, prefs);
     }
+
+    /**
+     * Backtest Execution using AIDecisionEngine candle-by-candle with strict zero Look-Ahead Bias.
+     */
+    public static BacktestResult runAIBacktest(List<MarketIntelligenceEngine.Bar> bars, BacktestParams params, SharedPreferences prefs) {
+        BacktestResult result = new BacktestResult();
+        if (params == null) params = new BacktestParams();
+        result.params = params;
+        result.initialCapital = params.initialCapital;
+        result.runTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date());
+        result.runId = "AI_BT_" + System.currentTimeMillis();
+
+        if (bars == null || bars.size() < 30) {
+            result.arabicSummary = "بيانات غير كافية لتشغيل اختبار المحرك الذكي (تتطلب 30 شمعة على الأقل).";
+            result.finalCapital = params.initialCapital;
+            return result;
+        }
+
+        int effectiveBarCount = bars.size();
+        if (params.inSampleRatio > 0.0 && params.inSampleRatio < 1.0) {
+            effectiveBarCount = (int) Math.round(bars.size() * params.inSampleRatio);
+            effectiveBarCount = Math.max(30, effectiveBarCount);
+        }
+
+        double cash = params.initialCapital;
+        double peakCapital = cash;
+        double maxDDAmount = 0.0;
+        double maxDDPct = 0.0;
+
+        int wins = 0, losses = 0;
+        int currentWinStreak = 0, maxWinStreak = 0;
+        int currentLossStreak = 0, maxLossStreak = 0;
+        double totalRRSum = 0.0;
+
+        DrawdownAnalysis ddAnalysis = new DrawdownAnalysis();
+        ddAnalysis.peakValue = cash;
+        int currentDdStartIdx = -1;
+
+        result.equityCurve.add(new EquityPoint(0, "Bar_0", bars.get(0).close, cash, cash, 0.0, 0.0, ""));
+
+        AIDecisionEngine aiEngine = new AIDecisionEngine();
+
+        for (int i = 29; i < effectiveBarCount - 1; i++) {
+            MarketIntelligenceEngine.Bar currentBar = bars.get(i);
+
+            // Evaluate AI Decision strictly at candle index i (using bars 0..i only)
+            AIDecisionResult aiRes = aiEngine.evaluateAtCandle(bars, i, params.symbol, params.timeframe, prefs);
+
+            if (aiRes != null && (aiRes.decision == AIDecisionResult.Decision.BUY || aiRes.decision == AIDecisionResult.Decision.SELL)) {
+                TradeSetup.Direction dir = aiRes.decision == AIDecisionResult.Decision.BUY ?
+                        TradeSetup.Direction.BUY : TradeSetup.Direction.SELL;
+
+                double lotSize = params.customPositionSizeLot > 0 ? params.customPositionSizeLot :
+                        (aiRes.positionSizeLot > 0 ? aiRes.positionSizeLot : 0.1);
+                lotSize = Math.max(0.01, lotSize);
+
+                double riskAmountUsd = cash * (params.riskPerTradePct / 100.0);
+
+                double spreadCost = params.spreadPips;
+                double slippageCost = params.slippagePips;
+                double totalFrictionPerPip = (spreadCost / 2.0) + slippageCost;
+                double totalSpreadSlippageUsd = (spreadCost + (slippageCost * 2.0)) * lotSize * 100.0;
+                double commissionUsd = params.commissionPerLot * lotSize;
+
+                double entryPrice = dir == TradeSetup.Direction.BUY ?
+                        currentBar.close + totalFrictionPerPip : currentBar.close - totalFrictionPerPip;
+
+                double sl = aiRes.stopLoss > 0 ? aiRes.stopLoss :
+                        (dir == TradeSetup.Direction.BUY ? entryPrice - 5.0 : entryPrice + 5.0);
+                double tp = aiRes.takeProfit > 0 ? aiRes.takeProfit :
+                        (dir == TradeSetup.Direction.BUY ? entryPrice + 10.0 : entryPrice - 10.0);
+
+                double riskDist = Math.abs(entryPrice - sl);
+                double rewardDist = Math.abs(tp - entryPrice);
+                double rrRatio = riskDist > 0 ? rewardDist / riskDist : 2.0;
+                totalRRSum += rrRatio;
+
+                BacktestTrade trade = new BacktestTrade();
+                trade.id = "AI_T_" + (result.trades.size() + 1);
+                trade.tradeIndex = result.trades.size() + 1;
+                trade.entryCandleIndex = i;
+                trade.entryTime = "Bar_" + i;
+                trade.direction = dir.name();
+                trade.entryPrice = entryPrice;
+                trade.stopLoss = sl;
+                trade.takeProfit = tp;
+                trade.lotSize = lotSize;
+                trade.riskAmountUsd = riskAmountUsd;
+                trade.riskPercentage = params.riskPerTradePct;
+                trade.commissionPaidUsd = commissionUsd;
+                trade.spreadSlippageCostUsd = totalSpreadSlippageUsd;
+                trade.entryReason = "AI Decision: " + aiRes.decision.name() + " (Quality: " + aiRes.tradeQuality.name() + ")";
+
+                boolean tradeClosed = false;
+                for (int j = i + 1; j < effectiveBarCount; j++) {
+                    MarketIntelligenceEngine.Bar futureBar = bars.get(j);
+
+                    if (dir == TradeSetup.Direction.BUY) {
+                        if (futureBar.high >= tp) {
+                            trade.exitCandleIndex = j;
+                            trade.exitTime = "Bar_" + j;
+                            trade.exitPrice = tp - (spreadCost / 2.0);
+                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
+                            trade.pnlUsd = rawPnl - commissionUsd;
+                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
+                            trade.exitReason = "TP_HIT";
+                            trade.outcome = "WIN";
+                            trade.durationBars = j - i;
+                            tradeClosed = true;
+                            i = j;
+                            break;
+                        } else if (futureBar.low <= sl) {
+                            trade.exitCandleIndex = j;
+                            trade.exitTime = "Bar_" + j;
+                            trade.exitPrice = sl - (spreadCost / 2.0);
+                            double rawPnl = (trade.exitPrice - trade.entryPrice) * lotSize * 100.0;
+                            trade.pnlUsd = rawPnl - commissionUsd;
+                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
+                            trade.exitReason = "SL_HIT";
+                            trade.outcome = "LOSS";
+                            trade.durationBars = j - i;
+                            tradeClosed = true;
+                            i = j;
+                            break;
+                        }
+                    } else { // SELL
+                        if (futureBar.low <= tp) {
+                            trade.exitCandleIndex = j;
+                            trade.exitTime = "Bar_" + j;
+                            trade.exitPrice = tp + (spreadCost / 2.0);
+                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
+                            trade.pnlUsd = rawPnl - commissionUsd;
+                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
+                            trade.exitReason = "TP_HIT";
+                            trade.outcome = "WIN";
+                            trade.durationBars = j - i;
+                            tradeClosed = true;
+                            i = j;
+                            break;
+                        } else if (futureBar.high >= sl) {
+                            trade.exitCandleIndex = j;
+                            trade.exitTime = "Bar_" + j;
+                            trade.exitPrice = sl + (spreadCost / 2.0);
+                            double rawPnl = (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
+                            trade.pnlUsd = rawPnl - commissionUsd;
+                            trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
+                            trade.exitReason = "SL_HIT";
+                            trade.outcome = "LOSS";
+                            trade.durationBars = j - i;
+                            tradeClosed = true;
+                            i = j;
+                            break;
+                        }
+                    }
+                }
+
+                if (!tradeClosed) {
+                    int lastIdx = effectiveBarCount - 1;
+                    MarketIntelligenceEngine.Bar lastBar = bars.get(lastIdx);
+                    trade.exitCandleIndex = lastIdx;
+                    trade.exitTime = "Bar_" + lastIdx;
+                    trade.exitPrice = lastBar.close;
+                    double rawPnl = dir == TradeSetup.Direction.BUY ?
+                            (trade.exitPrice - trade.entryPrice) * lotSize * 100.0 :
+                            (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
+                    trade.pnlUsd = rawPnl - commissionUsd;
+                    trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
+                    trade.exitReason = "END_OF_DATA";
+                    trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
+                    trade.durationBars = lastIdx - i;
+                    i = lastIdx;
+                }
+
+                cash += trade.pnlUsd;
+                result.trades.add(trade);
+                result.totalTrades++;
+
+                if (trade.pnlUsd > 0) {
+                    wins++;
+                    result.grossProfit += trade.pnlUsd;
+                    if (trade.pnlUsd > result.largestWin) result.largestWin = trade.pnlUsd;
+                    currentWinStreak++;
+                    if (currentWinStreak > maxWinStreak) maxWinStreak = currentWinStreak;
+                    currentLossStreak = 0;
+                } else {
+                    losses++;
+                    double absLoss = Math.abs(trade.pnlUsd);
+                    result.grossLoss += absLoss;
+                    if (absLoss > result.largestLoss) result.largestLoss = absLoss;
+                    currentLossStreak++;
+                    if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+                    currentWinStreak = 0;
+                }
+
+                if (cash > peakCapital) {
+                    if (currentDdStartIdx != -1) {
+                        ddAnalysis.recoveryTime = trade.exitTime;
+                        ddAnalysis.recoveryBarIndex = trade.exitCandleIndex;
+                        ddAnalysis.recoveryDurationBars = trade.exitCandleIndex - currentDdStartIdx;
+                        currentDdStartIdx = -1;
+                    }
+                    peakCapital = cash;
+                } else {
+                    if (currentDdStartIdx == -1) {
+                        currentDdStartIdx = trade.entryCandleIndex;
+                        ddAnalysis.drawdownStartTime = trade.entryTime;
+                        ddAnalysis.drawdownStartBarIndex = trade.entryCandleIndex;
+                    }
+                    double ddVal = peakCapital - cash;
+                    double ddPctVal = peakCapital > 0 ? (ddVal / peakCapital) * 100.0 : 0.0;
+                    if (ddVal > maxDDAmount) {
+                        maxDDAmount = ddVal;
+                        maxDDPct = ddPctVal;
+                        ddAnalysis.maxDrawdownAmount = ddVal;
+                        ddAnalysis.maxDrawdownPct = ddPctVal;
+                        ddAnalysis.troughTime = trade.exitTime;
+                        ddAnalysis.troughBarIndex = trade.exitCandleIndex;
+                        ddAnalysis.troughValue = cash;
+                    }
+                }
+
+                double curDDPct = peakCapital > 0 ? ((peakCapital - cash) / peakCapital) * 100.0 : 0.0;
+                result.equityCurve.add(new EquityPoint(i, "Bar_" + i, currentBar.close, cash, cash, peakCapital - cash, curDDPct, trade.id));
+            } else {
+                double curDDPct = peakCapital > 0 ? ((peakCapital - cash) / peakCapital) * 100.0 : 0.0;
+                result.equityCurve.add(new EquityPoint(i, "Bar_" + i, currentBar.close, cash, cash, peakCapital - cash, curDDPct, ""));
+            }
+        }
+
+        result.finalCapital = cash;
+        result.netPnl = result.grossProfit - result.grossLoss;
+        result.netPnlPct = params.initialCapital > 0 ? (result.netPnl / params.initialCapital) * 100.0 : 0.0;
+        result.winningTrades = wins;
+        result.losingTrades = losses;
+        result.winRate = result.totalTrades > 0 ? (double) wins / result.totalTrades : 0.0;
+        result.lossRate = result.totalTrades > 0 ? (double) losses / result.totalTrades : 0.0;
+        result.avgWin = wins > 0 ? result.grossProfit / wins : 0.0;
+        result.avgLoss = losses > 0 ? result.grossLoss / losses : 0.0;
+        result.profitFactor = result.grossLoss > 0 ? result.grossProfit / result.grossLoss : (result.grossProfit > 0 ? 99.0 : 0.0);
+        result.maxDrawdownPct = maxDDPct;
+        result.maxDrawdown = maxDDPct / 100.0;
+        result.avgRiskReward = result.totalTrades > 0 ? totalRRSum / result.totalTrades : 0.0;
+        result.avgTradePnl = result.totalTrades > 0 ? result.netPnl / result.totalTrades : 0.0;
+        result.maxConsecutiveWins = maxWinStreak;
+        result.longestLosingStreak = maxLossStreak;
+
+        ddAnalysis.longestLosingStreak = maxLossStreak;
+        ddAnalysis.peakValue = peakCapital;
+        result.drawdownAnalysis = ddAnalysis;
+
+        result.arabicSummary = generateArabicSummary(result);
+        return result;
+    }
 }

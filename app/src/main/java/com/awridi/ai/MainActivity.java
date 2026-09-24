@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
     MarketIntelligenceEngine.Result currentMiResult = null;
     SignalEngine.SignalResult currentSignalResult = null;
     TradeSetup currentTradeSetup = null;
+    AIDecisionResult currentAiDecisionResult = null;
 
     // Backtest Caches
     BacktestEngine.BacktestResult currentBacktestResult = null;
@@ -200,6 +201,7 @@ public class MainActivity extends Activity {
 
         String[] tabs = {
                 "الرئيسية",
+                "🎯 القرار الذكي",
                 "⚡ التداول",
                 "المحفظة",
                 "Backtest",
@@ -210,6 +212,7 @@ public class MainActivity extends Activity {
 
         String[] keys = {
                 "home",
+                "ai_decision",
                 "trading",
                 "portfolio",
                 "backtest",
@@ -238,6 +241,10 @@ public class MainActivity extends Activity {
         switch (tabKey) {
             case "home":
                 showHomeScreen();
+                break;
+
+            case "ai_decision":
+                showTradeDecisionCenterScreen();
                 break;
 
             case "trading":
@@ -517,6 +524,225 @@ public class MainActivity extends Activity {
         warningCard.addView(createTextView("⚠️ تحذير هام من المخاطر", 15, true));
         warningCard.addView(createTextView("سوق الذهب يتسم بالتقلب العالي. هذه الإشارات والمعلومات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.", 13, false));
         content.addView(warningCard);
+    }
+
+    // --- SCREEN 1.2: TRADE DECISION CENTER (PHASE 9 AI DECISION ENGINE) ---
+    void showTradeDecisionCenterScreen() {
+        setupBaseLayout("ai_decision");
+
+        LinearLayout heroCard = createCardBox();
+        heroCard.addView(createTextView("🎯 مركز قرار الصفقة (Trade Decision Center)", 20, true));
+        heroCard.addView(createTextView("محرك القرار الذكي + توافق الإشارات + تقييم حالة السوق وبوابة إدارة المخاطر", 13, false));
+
+        TextView liveStatusTv = createTextView("• حالة التداول الحي: غير مفعل — LIVE TRADING = DISABLED 🔒", 13, true);
+        liveStatusTv.setTextColor(Color.parseColor("#FF9800"));
+        heroCard.addView(liveStatusTv);
+        content.addView(heroCard);
+
+        LinearLayout actionCard = createCardBox();
+        actionCard.addView(createTextView("⚡ تقييم قرار الصفقة الذكي الآن", 16, true));
+
+        Button evalBtn = createButton("🧠 تشغيل محرك القرار AI Decision Engine", v -> runAIDecisionEngineEvaluation());
+        actionCard.addView(evalBtn);
+
+        statusText = createTextView("اضغط على الزر أعلاه لتجميع الإشارات وإحالة القرار إلى Risk Gate.", 13, false);
+        statusText.setTextColor(mutedColor);
+        actionCard.addView(statusText);
+        content.addView(actionCard);
+
+        if (currentAiDecisionResult != null) {
+            displayAIDecisionResult(currentAiDecisionResult);
+        }
+
+        displayAIDecisionHistorySection();
+    }
+
+    void runAIDecisionEngineEvaluation() {
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
+
+        statusText.setText("🔄 جاري تجميع الإشارات وتقييم قرار الصفقة...");
+        statusText.setTextColor(secondaryColor);
+
+        executor.submit(() -> {
+            try {
+                List<MarketIntelligenceEngine.Bar> miBars = null;
+                boolean isMockData = false;
+
+                if (!apiKey.isEmpty()) {
+                    try {
+                        List<GoldAnalysisEngine.Bar> gBars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, "15min", apiKey, 150);
+                        if (gBars != null && !gBars.isEmpty()) {
+                            miBars = new ArrayList<>();
+                            for (GoldAnalysisEngine.Bar gb : gBars) {
+                                miBars.add(new MarketIntelligenceEngine.Bar(gb.o, gb.h, gb.l, gb.c, gb.v));
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (miBars == null || miBars.isEmpty()) {
+                    HistoricalDataProvider.HistoricalDataBatch mockBatch =
+                            HistoricalDataProvider.generateMockBars(GOLD_SYMBOL, "15min", 150, 2650.0, 42);
+                    miBars = mockBatch.bars;
+                    isMockData = true;
+                }
+
+                AIDecisionEngine aiEngine = new AIDecisionEngine();
+                AIDecisionResult result = aiEngine.evaluate(miBars, GOLD_SYMBOL, "15min", prefs);
+
+                currentAiDecisionResult = result;
+                AIDecisionHistory.saveDecision(prefs, result);
+
+                final boolean mockFlag = isMockData;
+                runOnUiThread(() -> {
+                    statusText.setText(mockFlag ? "⚠️ تم توليد القرار باستخدام (MOCK DATA)" : "✅ اكتمل تقييم القرار بنجاح!");
+                    statusText.setTextColor(mockFlag ? Color.YELLOW : Color.GREEN);
+                    showTradeDecisionCenterScreen();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    statusText.setText("❌ خطأ أثناء تقييم القرار: " + e.getMessage());
+                    statusText.setTextColor(Color.RED);
+                });
+            }
+        });
+    }
+
+    void displayAIDecisionResult(AIDecisionResult res) {
+        // 1. Decision Header & Quality Card
+        LinearLayout decCard = createCardBox();
+        decCard.addView(createTextView("📊 1. القرار النهائي للذكاء الاصطناعي", 18, true));
+
+        TextView decTv = createTextView("القرار: " + res.decision.name(), 28, true);
+        if (res.decision == AIDecisionResult.Decision.BUY) decTv.setTextColor(Color.GREEN);
+        else if (res.decision == AIDecisionResult.Decision.SELL) decTv.setTextColor(Color.RED);
+        else decTv.setTextColor(Color.YELLOW);
+        decCard.addView(decTv);
+
+        decCard.addView(createTextView("• السعر الحالي للذهب: $" + String.format(Locale.US, "%.2f", res.currentPrice), 15, true));
+        decCard.addView(createTextView("• درجة الثقة (Confidence): " + String.format(Locale.US, "%.1f%%", res.confidence), 15, true));
+        decCard.addView(createTextView("• شرح مكونات الثقة: " + res.confidenceExplanation, 12, false));
+        decCard.addView(createTextView("• جودة إعداد الصفقة (Trade Quality): " + res.tradeQuality.getArabicName() + " (" + String.format(Locale.US, "%.1f", res.tradeQualityScore) + "/100)", 14, true));
+        content.addView(decCard);
+
+        // 2. Market Regime & State
+        LinearLayout regimeCard = createCardBox();
+        regimeCard.addView(createTextView("🌐 2. حالة نظام السوق (Market Regime)", 16, true));
+        regimeCard.addView(createTextView("• حالة السوق الحالية: " + res.marketRegimeNameArabic, 14, true));
+        regimeCard.addView(createTextView("• نسبة الثقة بحالة السوق: " + String.format(Locale.US, "%.1f%%", res.marketRegimeConfidence), 14, false));
+        content.addView(regimeCard);
+
+        // 3. Signal Confluence
+        LinearLayout confCard = createCardBox();
+        confCard.addView(createTextView("⚡ 3. توافق الإشارات المتعددة (Signal Confluence)", 16, true));
+        confCard.addView(createTextView("• درجة التوافق (Confluence Score): " + String.format(Locale.US, "%.1f%%", res.confluenceScore) + " [" + res.confluenceLevel + "]", 14, true));
+        confCard.addView(createTextView("• الإشارات المؤيدة: " + res.supportingSignalsCount + " | المعارضة: " + res.conflictingSignalsCount + " | المحايدة: " + res.neutralSignalsCount, 14, false));
+
+        if (!res.supportingSignals.isEmpty()) {
+            confCard.addView(createTextView("✅ الإشارات المؤيدة:", 13, true));
+            for (String s : res.supportingSignals) confCard.addView(createTextView(" ✔ " + s, 12, false));
+        }
+        if (!res.conflictingSignals.isEmpty()) {
+            confCard.addView(createTextView("⚠️ الإشارات المعارضة:", 13, true));
+            for (String c : res.conflictingSignals) confCard.addView(createTextView(" ✖ " + c, 12, false));
+        }
+        content.addView(confCard);
+
+        // 4. Proposed Trade Setup (PAPER ONLY)
+        LinearLayout setupCard = createCardBox();
+        setupCard.addView(createTextView("📐 4. الصفقة المقترحة للتنفيذ الافتراضي (Paper Setup)", 16, true));
+        setupCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", res.entryPrice), 14, true));
+        setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", res.stopLoss), 14, true));
+        setupCard.addView(createTextView("• أخذ الربح (Take Profit): $" + String.format(Locale.US, "%.2f", res.takeProfit), 14, true));
+        setupCard.addView(createTextView("• نسبة المخاطرة إلى العائد (Risk/Reward): 1 : " + String.format(Locale.US, "%.2f", res.riskRewardRatio), 14, false));
+        setupCard.addView(createTextView("• حجم اللوت المحسوب (Position Lot): " + String.format(Locale.US, "%.2f", res.positionSizeLot) + " لوت", 14, true));
+
+        if (res.decision != AIDecisionResult.Decision.WAIT) {
+            Button execPaperBtn = createButton("📝 تنفيذ القرار في ExecutionEngine (تداول افتراضي)", v -> {
+                ExecutionOrder order = new ExecutionOrder();
+                order.action = res.decision == AIDecisionResult.Decision.BUY ? ExecutionOrder.Action.BUY : ExecutionOrder.Action.SELL;
+                order.orderType = ExecutionOrder.OrderType.MARKET;
+                order.price = res.entryPrice;
+                order.stopLoss = res.stopLoss;
+                order.takeProfit = res.takeProfit;
+                order.lotSize = res.positionSizeLot;
+                order.signalSource = "AI Decision Engine";
+
+                showOrderConfirmationDialog(order);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 10, 0, 0);
+            setupCard.addView(execPaperBtn, lp);
+        } else {
+            TextView waitMsg = createTextView("⛔ التداول معطل لهذه الجلسة بسبب عدم استيفاء شروط الدخول أو اعتراض بوابة إدارة المخاطر.", 13, true);
+            waitMsg.setTextColor(Color.YELLOW);
+            setupCard.addView(waitMsg);
+        }
+        content.addView(setupCard);
+
+        // 5. Reasons & Audit Trail
+        LinearLayout rationaleCard = createCardBox();
+        rationaleCard.addView(createTextView("📜 5. أسباب القرار وسجل التدقيق (Decision Audit Trail)", 16, true));
+        rationaleCard.addView(createTextView(res.arabicExplanation, 13, false));
+
+        if (!res.auditTrail.isEmpty()) {
+            rationaleCard.addView(createTextView("\n🔍 سجل التدقيق الفني (Audit Trail):", 13, true));
+            for (String line : res.auditTrail) {
+                rationaleCard.addView(createTextView("  • " + line, 11, false));
+            }
+        }
+        content.addView(rationaleCard);
+    }
+
+    void displayAIDecisionHistorySection() {
+        LinearLayout histCard = createCardBox();
+        histCard.addView(createTextView("📜 سجل القرارات السابقة (Decision History Log)", 18, true));
+
+        List<AIDecisionResult> history = AIDecisionHistory.loadDecisionHistory(prefs);
+        if (history.isEmpty()) {
+            histCard.addView(createTextView("لا توجد قرارات سابقة مسجلة في السجل.", 13, false));
+        } else {
+            histCard.addView(createTextView("عدد القرارات المسجلة محلياً: " + history.size(), 13, true));
+
+            for (AIDecisionResult h : history) {
+                LinearLayout item = createCardBox();
+                TextView headerTv = createTextView("📌 " + h.decision.name() + " | " + h.symbol + " (" + h.timeframe + ")", 15, true);
+                if (h.decision == AIDecisionResult.Decision.BUY) headerTv.setTextColor(Color.GREEN);
+                else if (h.decision == AIDecisionResult.Decision.SELL) headerTv.setTextColor(Color.RED);
+                else headerTv.setTextColor(Color.YELLOW);
+                item.addView(headerTv);
+
+                item.addView(createTextView("الوقت: " + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(h.timestamp)) + " | الثقة: " + String.format(Locale.US, "%.1f%%", h.confidence), 13, false));
+                item.addView(createTextView("حالة السوق: " + h.marketRegimeNameArabic + " | Confluence: " + String.format(Locale.US, "%.1f%%", h.confluenceScore), 12, false));
+                item.addView(createTextView("جودة الصفقة: " + h.tradeQuality.getArabicName() + " | Risk Gate: " + (h.riskApproved ? "APPROVED ✅" : "REJECTED ❌"), 12, false));
+
+                LinearLayout btns = new LinearLayout(this);
+                btns.setOrientation(LinearLayout.HORIZONTAL);
+
+                Button viewBtn = createSecondaryButton("🔍 تفاصيل القرار", v -> displayAIDecisionResult(h));
+                Button delBtn = createSecondaryButton("🗑️ حذف", v -> {
+                    AIDecisionHistory.deleteDecisionById(prefs, h.decisionId);
+                    Toast.makeText(this, "تم حذف القرار من السجل", Toast.LENGTH_SHORT).show();
+                    showTradeDecisionCenterScreen();
+                });
+
+                btns.addView(viewBtn, new LinearLayout.LayoutParams(0, -2, 1));
+                btns.addView(delBtn, new LinearLayout.LayoutParams(0, -2, 1));
+                item.addView(btns);
+
+                histCard.addView(item);
+            }
+
+            Button clearAllBtn = createSecondaryButton("🗑️ مسح كافة سجلات القرارات", v -> {
+                AIDecisionHistory.clearHistory(prefs);
+                Toast.makeText(this, "تم مسح كافة القرارات المسجلة", Toast.LENGTH_SHORT).show();
+                showTradeDecisionCenterScreen();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 10, 0, 0);
+            histCard.addView(clearAllBtn, lp);
+        }
+        content.addView(histCard);
     }
 
     // --- SCREEN 1.5: XAU/USD TRADING SCREEN (PHASE 7 EXECUTION ENGINE) ---
