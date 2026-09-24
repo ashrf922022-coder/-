@@ -21,6 +21,9 @@ public class MainActivity extends Activity {
     ExecutorService executor = Executors.newFixedThreadPool(4);
     JSONObject design, strat;
 
+    // Execution Engine
+    ExecutionEngine executionEngine = new ExecutionEngine();
+
     // Theme Colors
     int primaryColor, secondaryColor, backgroundColor, surfaceColor, textColor, mutedColor;
 
@@ -192,6 +195,7 @@ public class MainActivity extends Activity {
 
         String[] tabs = {
                 "الرئيسية",
+                "⚡ التداول",
                 "المحفظة",
                 "Backtest",
                 "🧠 ذكاء السوق",
@@ -201,6 +205,7 @@ public class MainActivity extends Activity {
 
         String[] keys = {
                 "home",
+                "trading",
                 "portfolio",
                 "backtest",
                 "market_intelligence",
@@ -228,6 +233,10 @@ public class MainActivity extends Activity {
         switch (tabKey) {
             case "home":
                 showHomeScreen();
+                break;
+
+            case "trading":
+                showTradingScreen();
                 break;
 
             case "portfolio":
@@ -397,7 +406,7 @@ public class MainActivity extends Activity {
 
             PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
 
-            RiskManagementEngine riskEngine = new RiskManagementEngine();
+            RiskManagementEngine riskEngine = executionEngine.getRiskEngine();
             riskEngine.setMaxDailyLossPercentage(maxDailyLossPct);
             RiskManagementEngine.RiskResult riskResult = riskEngine.evaluateTradeSetupRisk(currentTradeSetup, cap, riskPct, summary.todayLossPnl);
 
@@ -428,7 +437,7 @@ public class MainActivity extends Activity {
                     }
                 }
 
-                Button paperBtn = createButton("📝 تنفيذ الصفقة القابلة للتنفيذ في المحفظة", v -> executePaperTradeFromSetup(currentTradeSetup));
+                Button paperBtn = createButton("📝 تنفيذ الصفقة عبر ExecutionEngine", v -> executePaperTradeFromSetup(currentTradeSetup));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.setMargins(0, 10, 0, 0);
                 setupCard.addView(paperBtn, lp);
@@ -503,6 +512,227 @@ public class MainActivity extends Activity {
         warningCard.addView(createTextView("⚠️ تحذير هام من المخاطر", 15, true));
         warningCard.addView(createTextView("سوق الذهب يتسم بالتقلب العالي. هذه الإشارات والمعلومات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.", 13, false));
         content.addView(warningCard);
+    }
+
+    // --- SCREEN 1.5: XAU/USD TRADING SCREEN (PHASE 7 EXECUTION ENGINE) ---
+    void showTradingScreen() {
+        setupBaseLayout("trading");
+
+        // 1. Trading Header Card
+        LinearLayout headerCard = createCardBox();
+        headerCard.addView(createTextView("⚡ شاشة التداول تنفيذ الأوامر — XAU/USD", 20, true));
+
+        double price = currentAnalysis != null ? currentAnalysis.currentPrice : 2650.0;
+        String signalStr = currentSignalResult != null ? currentSignalResult.signalType.name() : (currentAnalysis != null ? currentAnalysis.signal : "WAIT");
+
+        TextView priceTv = createTextView("💰 " + GOLD_SYMBOL + ": $" + String.format(Locale.US, "%.2f", price), 26, true);
+        priceTv.setTextColor(primaryColor);
+        headerCard.addView(priceTv);
+
+        TextView sigTv = createTextView("الاتجاه/الإشارة الحالية: " + signalStr, 16, true);
+        sigTv.setTextColor(signalStr.contains("BUY") ? Color.GREEN : (signalStr.contains("SELL") ? Color.RED : Color.YELLOW));
+        headerCard.addView(sigTv);
+
+        // Required Status Labels for Phase 7
+        TextView modeTv = createTextView("• وضع التداول الحالي: التداول الافتراضي (Paper Trading) 🟢", 14, true);
+        modeTv.setTextColor(Color.GREEN);
+        headerCard.addView(modeTv);
+
+        TextView liveStatusTv = createTextView("• التداول الحقيقي: غير مفعل — قريبًا 🔒", 14, true);
+        liveStatusTv.setTextColor(Color.parseColor("#FF9800"));
+        headerCard.addView(liveStatusTv);
+
+        content.addView(headerCard);
+
+        // 2. Kill Switch Management Card
+        LinearLayout killCard = createCardBox();
+        boolean killActive = KillSwitch.isActive(prefs);
+
+        if (killActive) {
+            GradientDrawable kGd = new GradientDrawable();
+            kGd.setColor(Color.parseColor("#3A1319"));
+            kGd.setCornerRadius(16);
+            kGd.setStroke(2, Color.RED);
+            killCard.setBackground(kGd);
+
+            TextView kTv = createTextView("⛔ نظام أمان الطوارئ (Kill Switch): مفعل 🔴", 16, true);
+            kTv.setTextColor(Color.RED);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("تم إيقاف تفعيل أو إنشاء أوامر تداول جديدة لحماية حسابك.", 13, false));
+
+            Button disableKBtn = createSecondaryButton("🟢 إيقاف مفتاح الطوارئ (Disable Kill Switch)", v -> {
+                KillSwitch.deactivate(prefs);
+                Toast.makeText(this, "تم إيقاف مفتاح الطوارئ. يمكن استئناف التداول الافتراضي.", Toast.LENGTH_SHORT).show();
+                showTradingScreen();
+            });
+            killCard.addView(disableKBtn);
+        } else {
+            TextView kTv = createTextView("🛡️ نظام أمان الطوارئ (Kill Switch): غير مفعل 🟢", 16, true);
+            kTv.setTextColor(Color.GREEN);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("عند تفعيل مفتاح الطوارئ، سيتم منع فتح أو تنفيذ أي أوامر جديدة فوراً.", 13, false));
+
+            Button enableKBtn = createButton("🚨 تفعيل مفتاح طوارئ الأمان (Kill Switch)", v -> {
+                KillSwitch.activate(prefs);
+                Toast.makeText(this, "تم تفعيل مفتاح الطوارئ وحظر الأوامر الجديدة!", Toast.LENGTH_SHORT).show();
+                showTradingScreen();
+            });
+            enableKBtn.setBackgroundColor(Color.RED);
+            killCard.addView(enableKBtn);
+        }
+        content.addView(killCard);
+
+        // 3. New Order Execution Form
+        LinearLayout orderFormCard = createCardBox();
+        orderFormCard.addView(createTextView("📝 إنشاء أمر تداول جديد عبر ExecutionEngine", 18, true));
+
+        orderFormCard.addView(createTextView("نوع الأمر (Order Type):", 13, true));
+        Spinner orderTypeSpinner = new Spinner(this);
+        ArrayAdapter<String> orderTypeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Market Order", "Limit Order", "Stop Order"});
+        orderTypeSpinner.setAdapter(orderTypeAdapter);
+        orderFormCard.addView(orderTypeSpinner);
+
+        orderFormCard.addView(createTextView("الاتجاه (Action):", 13, true));
+        Spinner actionSpinner = new Spinner(this);
+        ArrayAdapter<String> actionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"BUY", "SELL"});
+        actionSpinner.setAdapter(actionAdapter);
+        orderFormCard.addView(actionSpinner);
+
+        orderFormCard.addView(createTextView("سعر الدخول المقترح ($):", 13, true));
+        EditText priceEd = createEditText("2650.0", String.format(Locale.US, "%.2f", price));
+        orderFormCard.addView(priceEd);
+
+        orderFormCard.addView(createTextView("وقف الخسارة Stop Loss ($):", 13, true));
+        double defaultSL = signalStr.contains("SELL") ? price + 5.0 : price - 5.0;
+        EditText slEd = createEditText("Stop Loss...", String.format(Locale.US, "%.2f", defaultSL));
+        orderFormCard.addView(slEd);
+
+        orderFormCard.addView(createTextView("أخذ الربح Take Profit ($):", 13, true));
+        double defaultTP = signalStr.contains("SELL") ? price - 10.0 : price + 10.0;
+        EditText tpEd = createEditText("Take Profit...", String.format(Locale.US, "%.2f", defaultTP));
+        orderFormCard.addView(tpEd);
+
+        orderFormCard.addView(createTextView("حجم اللوت (Position Size / Lots):", 13, true));
+        EditText lotEd = createEditText("0.1", "0.10");
+        orderFormCard.addView(lotEd);
+
+        Button submitOrderBtn = createButton("🚀 تنفيذ الأمر الافتراضي (Submit Order)", v -> {
+            try {
+                String typeStr = orderTypeSpinner.getSelectedItem().toString();
+                String actStr = actionSpinner.getSelectedItem().toString();
+
+                ExecutionOrder.OrderType oType = ExecutionOrder.OrderType.MARKET;
+                if (typeStr.contains("Limit")) oType = ExecutionOrder.OrderType.LIMIT;
+                else if (typeStr.contains("Stop")) oType = ExecutionOrder.OrderType.STOP;
+
+                ExecutionOrder.Action act = actStr.equals("BUY") ? ExecutionOrder.Action.BUY : ExecutionOrder.Action.SELL;
+
+                double reqPrice = Double.parseDouble(priceEd.getText().toString().trim());
+                double reqSL = Double.parseDouble(slEd.getText().toString().trim());
+                double reqTP = Double.parseDouble(tpEd.getText().toString().trim());
+                double reqLot = Double.parseDouble(lotEd.getText().toString().trim());
+
+                ExecutionOrder newOrder = new ExecutionOrder(act, oType, reqPrice, reqSL, reqTP, reqLot);
+                showOrderConfirmationDialog(newOrder);
+            } catch (Exception e) {
+                Toast.makeText(this, "يرجى التحقق من القيم المدخلة للأمر", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 10, 0, 0);
+        orderFormCard.addView(submitOrderBtn, lp);
+        content.addView(orderFormCard);
+
+        // 4. Order History Log Card
+        LinearLayout orderHistoryCard = createCardBox();
+        orderHistoryCard.addView(createTextView("📜 سجل الأوامر والصفقات الكلي (Order History Log)", 18, true));
+
+        List<ExecutionOrder> history = ExecutionEngine.loadOrderHistory(prefs);
+        if (history.isEmpty()) {
+            orderHistoryCard.addView(createTextView("لا يوجد أوامر مسجلة في السجل بعد.", 13, false));
+        } else {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                ExecutionOrder o = history.get(i);
+                LinearLayout item = createCardBox();
+
+                TextView titleTv = createTextView("📌 " + o.action.name() + " " + o.symbol + " (" + o.orderType.name() + ")", 15, true);
+                if (o.status == ExecutionOrder.OrderStatus.FILLED) titleTv.setTextColor(Color.GREEN);
+                else if (o.status == ExecutionOrder.OrderStatus.REJECTED || o.status == ExecutionOrder.OrderStatus.FAILED) titleTv.setTextColor(Color.RED);
+                else titleTv.setTextColor(Color.YELLOW);
+                item.addView(titleTv);
+
+                item.addView(createTextView("الوقت: " + o.createdTimestamp + " | الحالة: " + o.status.name(), 13, true));
+                item.addView(createTextView("سعر الأمر: $" + String.format(Locale.US, "%.2f", o.price) + " | سعر التنفيذ: $" + String.format(Locale.US, "%.2f", o.fillPrice), 13, false));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", o.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", o.takeProfit) + " | Lot: " + String.format(Locale.US, "%.2f", o.lotSize), 13, false));
+                item.addView(createTextView("المخاطرة: $" + String.format(Locale.US, "%.2f", o.riskAmount) + " | R:R: 1:" + String.format(Locale.US, "%.2f", o.riskRewardRatio), 13, false));
+
+                if (o.status == ExecutionOrder.OrderStatus.REJECTED || o.status == ExecutionOrder.OrderStatus.FAILED) {
+                    TextView rejTv = createTextView("سبب الرفض: " + o.rejectionReason, 13, true);
+                    rejTv.setTextColor(Color.RED);
+                    item.addView(rejTv);
+                }
+
+                if (o.status == ExecutionOrder.OrderStatus.PENDING) {
+                    LinearLayout actBtns = new LinearLayout(this);
+                    actBtns.setOrientation(LinearLayout.HORIZONTAL);
+
+                    Button cancelBtn = createSecondaryButton("إلغاء الأمر", v -> {
+                        executionEngine.cancelOrder(o.orderId, prefs);
+                        Toast.makeText(this, "تم إلغاء الأمر المعلق بنجاح!", Toast.LENGTH_SHORT).show();
+                        showTradingScreen();
+                    });
+                    actBtns.addView(cancelBtn);
+                    item.addView(actBtns);
+                }
+
+                orderHistoryCard.addView(item);
+            }
+        }
+        content.addView(orderHistoryCard);
+    }
+
+    // Modal Confirmation Dialog for Order Execution
+    void showOrderConfirmationDialog(ExecutionOrder order) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("⚠️ تأكيد تنفيذ أمر التداول الافتراضي");
+
+        LinearLayout box = createCardBox();
+        box.addView(createTextView("يرجى مراجعة تفاصيل الأمر قبل التنفيذ في ExecutionEngine:", 14, true));
+        box.addView(createTextView("• الرمز: " + order.symbol, 14, false));
+        box.addView(createTextView("• نوع الأمر: " + order.orderType.name(), 14, true));
+        box.addView(createTextView("• اتجاه الصفقة: " + order.action.name(), 14, true));
+        box.addView(createTextView("• سعر الدخول المطلوبة: $" + String.format(Locale.US, "%.2f", order.price), 14, false));
+        box.addView(createTextView("• وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", order.stopLoss), 14, false));
+        box.addView(createTextView("• أخذ الربح (TP): $" + String.format(Locale.US, "%.2f", order.takeProfit), 14, false));
+        box.addView(createTextView("• حجم اللوت (Lots): " + String.format(Locale.US, "%.2f", order.lotSize), 14, false));
+
+        double cap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+        PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
+
+        builder.setView(box);
+        builder.setPositiveButton("تأكيد وتنفيذ الصفقة الافتراضية", (dialog, which) -> {
+            ExecutionOrder result = executionEngine.executeOrder(order, cap, summary.todayLossPnl, prefs);
+
+            if (result.status == ExecutionOrder.OrderStatus.FILLED || result.status == ExecutionOrder.OrderStatus.PENDING) {
+                new AlertDialog.Builder(this)
+                        .setTitle("✅ تم تنفيذ الأمر بنجاح")
+                        .setMessage("حالة الأمر: " + result.status.name() + "\n" +
+                                "سعر التنفيذ: $" + String.format(Locale.US, "%.2f", result.fillPrice) + "\n" +
+                                "مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", result.riskAmount) + "\n" +
+                                "ملاحظات: " + result.notes)
+                        .setPositiveButton("موافق", (d2, w2) -> showTradingScreen())
+                        .show();
+            } else {
+                new AlertDialog.Builder(this)
+                        .setTitle("❌ تم رفض الأمر (Risk / Security Blocked)")
+                        .setMessage("سبب الرفض:\n" + result.rejectionReason)
+                        .setPositiveButton("موافق", (d2, w2) -> showTradingScreen())
+                        .show();
+            }
+        });
+        builder.setNegativeButton("إلغاء", null);
+        builder.show();
     }
 
     // --- SCREEN 2: PORTFOLIO & RISK MANAGEMENT ---
@@ -828,18 +1058,15 @@ public class MainActivity extends Activity {
     }
 
     void executePaperTradeFromSetup(TradeSetup setup) {
-        GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
-        res.currentPrice = setup.entryPrice;
-        res.signal = setup.direction == TradeSetup.Direction.BUY ? "BUY SETUP 🟢" : "SELL SETUP 🔴";
-        res.confidenceScore = setup.confidence / 100.0;
-        res.entryPrice = setup.entryPrice;
-        res.stopLoss = setup.stopLoss;
-        res.takeProfit1 = setup.takeProfit;
-        res.takeProfit2 = setup.takeProfit;
-        res.riskRewardRatio = setup.riskRewardRatio;
-        res.arabicExplanation = setup.explanation;
+        ExecutionOrder order = new ExecutionOrder();
+        order.action = setup.direction == TradeSetup.Direction.BUY ? ExecutionOrder.Action.BUY : ExecutionOrder.Action.SELL;
+        order.orderType = ExecutionOrder.OrderType.MARKET;
+        order.price = setup.entryPrice;
+        order.stopLoss = setup.stopLoss;
+        order.takeProfit = setup.takeProfit;
+        order.signalSource = "TradeSetup Engine";
 
-        executePaperTradeFromSignalWithSource(res, "TradeSetup Engine");
+        showOrderConfirmationDialog(order);
     }
 
     void executePaperTradeFromSignal(GoldAnalysisEngine.AnalysisResult res) {
@@ -847,30 +1074,16 @@ public class MainActivity extends Activity {
     }
 
     void executePaperTradeFromSignalWithSource(GoldAnalysisEngine.AnalysisResult res, String sourceName) {
-        PortfolioManager.RiskValidationResult valRes = PortfolioManager.validateTradeRisk(prefs, res.entryPrice, res.stopLoss, res.takeProfit1, res.signal, sourceName);
+        ExecutionOrder order = new ExecutionOrder();
+        order.action = (res.signal != null && res.signal.contains("SELL")) ? ExecutionOrder.Action.SELL : ExecutionOrder.Action.BUY;
+        order.orderType = ExecutionOrder.OrderType.MARKET;
+        order.price = res.entryPrice;
+        order.stopLoss = res.stopLoss;
+        order.takeProfit = res.takeProfit1;
+        order.lotSize = res.suggestedLot > 0 ? res.suggestedLot : 0.1;
+        order.signalSource = sourceName;
 
-        if (!valRes.isAllowed) {
-            new AlertDialog.Builder(this)
-                    .setTitle("⚠️ رفض صفقة التداول الورقي (قواعد المخاطر)")
-                    .setMessage(valRes.messageArabic)
-                    .setPositiveButton("موافق", null)
-                    .show();
-        } else {
-            new AlertDialog.Builder(this)
-                    .setTitle("✅ قبول صفقة التداول الورقي")
-                    .setMessage(valRes.messageArabic + "\n\n• تفاصيل المخاطرة والأهداف:\n" +
-                            " - مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", valRes.riskAmountUsd) + "\n" +
-                            " - الربح المتوقع: $" + String.format(Locale.US, "%.2f", valRes.expectedProfitUsd) + "\n" +
-                            " - نسبة Risk/Reward: 1 : " + String.format(Locale.US, "%.2f", valRes.rrRatio) + "\n" +
-                            " - الحجم (Lot): " + String.format(Locale.US, "%.2f", valRes.lotSize))
-                    .setPositiveButton("تأكيد فتح الصفقة", (dialog, which) -> {
-                        PortfolioManager.executeTradeFromSignal(prefs, res, sourceName);
-                        Toast.makeText(this, "تم تسجيل الصفقة التجريبية في المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
-                        showPortfolioScreen();
-                    })
-                    .setNegativeButton("إلغاء", null)
-                    .show();
-        }
+        showOrderConfirmationDialog(order);
     }
 
     void closePaperTrade(PaperTrade trade, boolean isWin) {
@@ -996,7 +1209,7 @@ public class MainActivity extends Activity {
                     resCard.addView(createTextView("• أطول سلسلة خسائر (Longest Losing Streak): " + bt.longestLosingStreak, 14, false));
                     resCard.addView(createTextView("• رأس المال النهائي: $" + String.format(Locale.US, "%.2f", bt.finalCapital), 16, true));
 
-                    resCard.addView(createTextView("⚠️ تذكير: النتائج التاريخية لأغراض الدراسة والتقييم ولا تعني بالضرورة أرباحاً مستقبلية مضمونة.", 12, false));
+                    resCard.addView(createTextView("⚠️ تذكير: النتائج التاريخية لأغراض الدراسة والتقييم ولا تعني بالضرورة أرباحاً مستقلية مضمونة.", 12, false));
                     content.addView(resCard);
                 });
             } catch (Exception e) {
@@ -1155,7 +1368,7 @@ public class MainActivity extends Activity {
 
         signalCard.addView(createTextView("\n⛔ ملحوظة: لا يتم تنفيذ أي تداول حقيقي تلقائياً. هذه إشارة تحليلية تعليمية.", 12, false));
 
-        Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى التداول الورقي", v -> executePaperTradeFromMiSignal(r));
+        Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى ExecutionEngine", v -> executePaperTradeFromMiSignal(r));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 12, 0, 0);
         signalCard.addView(sendPaperBtn, lp);
