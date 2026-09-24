@@ -363,35 +363,72 @@ public class MainActivity extends Activity {
         signalCard.addView(createTextView("نسبة توافق الشروط (الثقة): " + String.format(Locale.US, "%.0f%%", res.confidenceScore * 100), 14, true));
         content.addView(signalCard);
 
-        // Display Trade Setup Box (Phase 4 TradeSetupEngine)
+        // Display Trade Setup Box & Risk Management (Phase 5 Risk Integration)
         if (currentTradeSetup != null) {
             LinearLayout setupCard = createCardBox();
-            setupCard.addView(createTextView("🎯 إعداد الصفقة الاحترافي (Trade Setup)", 16, true));
+            setupCard.addView(createTextView("🎯 إعداد الصفقة وحساب المخاطر (Trade Setup & Risk Management)", 16, true));
 
-            if (currentTradeSetup.valid) {
+            double cap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+            double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
+            double maxDailyLossPct = Double.parseDouble(prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0"));
+
+            PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
+
+            RiskManagementEngine riskEngine = new RiskManagementEngine();
+            riskEngine.setMaxDailyLossPercentage(maxDailyLossPct);
+            RiskManagementEngine.RiskResult riskResult = riskEngine.evaluateTradeSetupRisk(currentTradeSetup, cap, riskPct, summary.todayLossPnl);
+
+            if (currentTradeSetup.valid && riskResult.valid) {
                 TextView setupDirTv = createTextView("اتجاه الإعداد: " + currentTradeSetup.direction.name(), 18, true);
                 setupDirTv.setTextColor(currentTradeSetup.direction == TradeSetup.Direction.BUY ? Color.GREEN : Color.RED);
                 setupCard.addView(setupDirTv);
 
-                setupCard.addView(createTextView("• سعر الدخول (Entry Price): $" + String.format(Locale.US, "%.2f", currentTradeSetup.entryPrice), 14, true));
-                setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", currentTradeSetup.stopLoss) + " (مسافة: " + String.format(Locale.US, "%.2f", currentTradeSetup.riskDistance) + ")", 14, true));
-                setupCard.addView(createTextView("• هدف الربح (Take Profit): $" + String.format(Locale.US, "%.2f", currentTradeSetup.takeProfit) + " (مسافة: " + String.format(Locale.US, "%.2f", currentTradeSetup.rewardDistance) + ")", 14, true));
-                setupCard.addView(createTextView("• نسبة المخاطرة إلى العائد (Risk/Reward): 1 : " + String.format(Locale.US, "%.2f", currentTradeSetup.riskRewardRatio), 14, true));
-                setupCard.addView(createTextView("• نسبة الثقة: " + String.format(Locale.US, "%.1f%%", currentTradeSetup.confidence), 14, false));
-                setupCard.addView(createTextView("• جودة الإشارة (Signal Quality): " + currentTradeSetup.signalQuality, 14, false));
-                setupCard.addView(createTextView("• حالة السوق (Market Regime): " + (currentTradeSetup.marketRegime != null ? currentTradeSetup.marketRegime.name() : "غير محدد"), 14, false));
+                setupCard.addView(createTextView("• رأس المال: $" + String.format(Locale.US, "%.2f", riskResult.accountBalance), 14, false));
+                setupCard.addView(createTextView("• نسبة المخاطرة: " + String.format(Locale.US, "%.2f%%", riskResult.riskPercentage) + " ($" + String.format(Locale.US, "%.2f", riskResult.riskAmount) + ")", 14, true));
+                setupCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", riskResult.entryPrice), 14, true));
+                setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", riskResult.stopLoss) + " (مسافة: $" + String.format(Locale.US, "%.2f", riskResult.riskDistance) + ")", 14, true));
+                setupCard.addView(createTextView("• أخذ الربح (Take Profit): $" + String.format(Locale.US, "%.2f", riskResult.takeProfit) + " (مسافة: $" + String.format(Locale.US, "%.2f", riskResult.rewardDistance) + ")", 14, true));
+                setupCard.addView(createTextView("• Risk/Reward Ratio: 1 : " + String.format(Locale.US, "%.2f", riskResult.riskRewardRatio), 14, true));
+                setupCard.addView(createTextView("• حجم الصفقة المحسوب (Position Size): " + String.format(Locale.US, "%.2f", riskResult.positionSize) + " لوت", 14, true));
+                setupCard.addView(createTextView("• الحد الأقصى للخسارة اليومية: $" + String.format(Locale.US, "%.2f", riskResult.maximumDailyLossAmount) + " (" + String.format(Locale.US, "%.1f%%", riskResult.maximumDailyLoss) + ")", 14, false));
+                setupCard.addView(createTextView("• الخسارة اليومية الحالية: $" + String.format(Locale.US, "%.2f", riskResult.currentDailyLoss), 14, false));
+
+                TextView statusValidTv = createTextView("الحالة: Risk Valid ✅", 14, true);
+                statusValidTv.setTextColor(Color.GREEN);
+                setupCard.addView(statusValidTv);
+
+                if (!riskResult.warnings.isEmpty()) {
+                    for (String warn : riskResult.warnings) {
+                        TextView wTv = createTextView(" ⚠️ " + warn, 13, false);
+                        wTv.setTextColor(Color.YELLOW);
+                        setupCard.addView(wTv);
+                    }
+                }
 
                 Button paperBtn = createButton("📝 فتح صفقة تجريبية بإعداد Trade Setup", v -> executePaperTradeFromSetup(currentTradeSetup));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.setMargins(0, 10, 0, 0);
                 setupCard.addView(paperBtn, lp);
             } else {
-                TextView setupWaitTv = createTextView("WAIT / NO TRADE — لا يوجد إعداد صفقة صالح حاليًا", 16, true);
-                setupWaitTv.setTextColor(Color.YELLOW);
+                TextView setupWaitTv = createTextView("WAIT / RISK BLOCKED — الصفقة مرفوضة من إدارة المخاطر 🛑", 16, true);
+                setupWaitTv.setTextColor(Color.RED);
                 setupCard.addView(setupWaitTv);
 
+                String rejReason = !currentTradeSetup.valid ? "إعداد الصفقة الفني غير صالح." : riskResult.rejectionReason;
+                TextView reasonTv = createTextView("سبب الرفض: " + rejReason, 14, true);
+                reasonTv.setTextColor(Color.YELLOW);
+                setupCard.addView(reasonTv);
+
+                setupCard.addView(createTextView("• رأس المال: $" + String.format(Locale.US, "%.2f", cap), 13, false));
+                setupCard.addView(createTextView("• الحد الأقصى للخسارة اليومية: " + String.format(Locale.US, "%.1f%%", maxDailyLossPct) + " ($" + String.format(Locale.US, "%.2f", cap * (maxDailyLossPct / 100.0)) + ")", 13, false));
+                setupCard.addView(createTextView("• الخسارة اليومية الحالية: $" + String.format(Locale.US, "%.2f", summary.todayLossPnl), 13, false));
+
+                TextView statusBlockedTv = createTextView("الحالة: Risk Blocked ❌", 14, true);
+                statusBlockedTv.setTextColor(Color.RED);
+                setupCard.addView(statusBlockedTv);
+
                 if (!currentTradeSetup.conflictingFactors.isEmpty()) {
-                    setupCard.addView(createTextView("سبب عدم توفر Trade Setup صالح:", 13, true));
+                    setupCard.addView(createTextView("تفاصيل عدم الصلاحية:", 13, true));
                     for (String con : currentTradeSetup.conflictingFactors) {
                         setupCard.addView(createTextView(" • " + con, 13, false));
                     }

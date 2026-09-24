@@ -376,15 +376,12 @@ public class PortfolioManager {
 
         double capital = summary.baseCapital;
         double riskPct = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_RISK_PCT, "1.0"));
-        double riskAmountUsd = capital * (riskPct / 100.0);
-        res.riskAmountUsd = riskAmountUsd;
+        double maxDailyLossPct = Double.parseDouble(prefs.getString(PREF_KEY_MAX_DAILY_LOSS, "3.0"));
 
-        double riskDiff = Math.max(0.5, Math.abs(entryPrice - stopLoss));
-        double rewardDiff = Math.max(0.5, Math.abs(tp1 - entryPrice));
-
-        res.rrRatio = riskDiff > 0 ? rewardDiff / riskDiff : 1.5;
-        res.expectedProfitUsd = riskAmountUsd * res.rrRatio;
-        res.lotSize = riskAmountUsd / (riskDiff * 100.0); // 1 Lot XAU/USD = $100 per $1 move
+        TradeSetup.Direction dir = TradeSetup.Direction.BUY;
+        if (signalType != null && signalType.contains("SELL")) {
+            dir = TradeSetup.Direction.SELL;
+        }
 
         if (signalType != null && (signalType.contains("WAIT") || signalType.contains("NO TRADE"))) {
             res.isAllowed = false;
@@ -392,9 +389,27 @@ public class PortfolioManager {
             return res;
         }
 
-        if (summary.isDailyLossExceeded) {
+        RiskManagementEngine riskEngine = new RiskManagementEngine();
+        riskEngine.setMaxDailyLossPercentage(maxDailyLossPct);
+
+        RiskManagementEngine.RiskResult riskRes = riskEngine.evaluateRisk(
+                capital,
+                riskPct,
+                entryPrice,
+                stopLoss,
+                tp1,
+                dir,
+                summary.todayLossPnl
+        );
+
+        res.riskAmountUsd = riskRes.riskAmount;
+        res.rrRatio = riskRes.riskRewardRatio;
+        res.expectedProfitUsd = riskRes.riskAmount * riskRes.riskRewardRatio;
+        res.lotSize = riskRes.positionSize;
+
+        if (!riskRes.valid) {
             res.isAllowed = false;
-            res.messageArabic = String.format(Locale.US, "تم رفض فتح الصفقة: تجاوزت الخسارة اليومية الحالية (%.1f%%) الحد الأقصى المسموح به (%.1f%%).", summary.todayLossPct, Double.parseDouble(prefs.getString(PREF_KEY_MAX_DAILY_LOSS, "3.0")));
+            res.messageArabic = "تم رفض فتح الصفقة: " + riskRes.rejectionReason;
             return res;
         }
 
@@ -404,9 +419,9 @@ public class PortfolioManager {
             return res;
         }
 
-        if (summary.availableBalance < riskAmountUsd) {
+        if (summary.availableBalance < riskRes.riskAmount) {
             res.isAllowed = false;
-            res.messageArabic = String.format(Locale.US, "تم رفض فتح الصفقة: الرصيد المتاح ($%.2f) غير كافٍ لتغطية هامش المخاطرة ($%.2f).", summary.availableBalance, riskAmountUsd);
+            res.messageArabic = String.format(Locale.US, "تم رفض فتح الصفقة: الرصيد المتاح ($%.2f) غير كافٍ لتغطية هامش المخاطرة ($%.2f).", summary.availableBalance, riskRes.riskAmount);
             return res;
         }
 
