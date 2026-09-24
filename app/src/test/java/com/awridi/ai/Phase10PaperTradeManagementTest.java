@@ -926,25 +926,36 @@ public class Phase10PaperTradeManagementTest {
 
     @Test
     public void test56_BacktestFrictionDeductedFromPnL() {
-        List<MarketIntelligenceEngine.Bar> bars = new ArrayList<>();
-        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2605.0, 2595.0, 2600.0, 100.0));
-        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2620.0, 2595.0, 2615.0, 100.0));
+        List<MarketIntelligenceEngine.Bar> bars = HistoricalDataProvider.generateMockBars("XAU/USD", "15min", 30, 2600.0, 42).bars;
 
-        BacktestEngine.BacktestParams params = new BacktestEngine.BacktestParams();
-        params.commissionPerLot = 7.0;
-        params.spreadPips = 2.0;
-        params.slippagePips = 1.0;
-        params.customPositionSizeLot = 1.0;
+        // Case A: Zero friction (0 commission, 0 spread, 0 slippage)
+        BacktestEngine.BacktestParams paramsA = new BacktestEngine.BacktestParams();
+        paramsA.commissionPerLot = 0.0;
+        paramsA.spreadPips = 0.0;
+        paramsA.slippagePips = 0.0;
+        paramsA.customPositionSizeLot = 1.0;
 
-        BacktestEngine.BacktestResult res = BacktestEngine.runAIBacktest(bars, params, mockPrefs);
-        assertNotNull(res);
-        if (!res.trades.isEmpty()) {
-            BacktestEngine.BacktestTrade trade = res.trades.get(0);
-            assertTrue(trade.commissionPaidUsd > 0);
-            assertTrue(trade.spreadSlippageCostUsd > 0);
-            // Confirm pnlUsd accounts for both commission and spread/slippage costs
-            double expectedDeductions = trade.commissionPaidUsd + trade.spreadSlippageCostUsd;
-            assertTrue(trade.pnlUsd < (trade.exitPrice - trade.entryPrice) * trade.lotSize * 100.0);
+        BacktestEngine.BacktestResult resA = BacktestEngine.runAIBacktest(bars, paramsA, mockPrefs);
+
+        // Case B: Positive friction (Commission + Spread + Slippage)
+        BacktestEngine.BacktestParams paramsB = new BacktestEngine.BacktestParams();
+        paramsB.commissionPerLot = 7.0;
+        paramsB.spreadPips = 2.0;
+        paramsB.slippagePips = 1.0;
+        paramsB.customPositionSizeLot = 1.0;
+
+        BacktestEngine.BacktestResult resB = BacktestEngine.runAIBacktest(bars, paramsB, mockPrefs);
+
+        assertEquals(resA.totalTrades, resB.totalTrades);
+        if (resA.totalTrades > 0) {
+            assertTrue("PnL with friction must be strictly less than PnL without friction", resB.netPnl < resA.netPnl);
+            for (int k = 0; k < resA.trades.size(); k++) {
+                BacktestEngine.BacktestTrade tA = resA.trades.get(k);
+                BacktestEngine.BacktestTrade tB = resB.trades.get(k);
+                double totalFrictionCostB = tB.commissionPaidUsd + tB.spreadSlippageCostUsd;
+                assertTrue(totalFrictionCostB > 0);
+                assertTrue(tB.pnlUsd < tA.pnlUsd);
+            }
         }
     }
 
