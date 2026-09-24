@@ -344,7 +344,7 @@ public class BacktestEngine {
                         trade.exitCandleIndex = j;
                         trade.exitTime = "Bar_" + j;
                         trade.exitPrice = pos.currentPrice;
-                        trade.pnlUsd = pos.realizedPnL - commissionUsd;
+                        trade.pnlUsd = pos.realizedPnL - commissionUsd - totalSpreadSlippageUsd;
                         trade.pnlPercentage = cash > 0 ? (trade.pnlUsd / cash) * 100.0 : 0.0;
                         trade.exitReason = pos.status.name() + (pos.conflictType.equals("TP_SL_CONFLICT") ? "_CONFLICT" : "");
                         trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
@@ -364,7 +364,7 @@ public class BacktestEngine {
                     double rawPnl = dir == TradeSetup.Direction.BUY ?
                             (trade.exitPrice - trade.entryPrice) * lotSize * 100.0 :
                             (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                    trade.pnlUsd = rawPnl - commissionUsd;
+                    trade.pnlUsd = rawPnl - commissionUsd - totalSpreadSlippageUsd;
                     trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
                     trade.exitReason = "END_OF_DATA";
                     trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
@@ -819,7 +819,7 @@ public class BacktestEngine {
                         trade.exitCandleIndex = j;
                         trade.exitTime = "Bar_" + j;
                         trade.exitPrice = pos.currentPrice;
-                        trade.pnlUsd = pos.realizedPnL - commissionUsd;
+                        trade.pnlUsd = pos.realizedPnL - commissionUsd - totalSpreadSlippageUsd;
                         trade.pnlPercentage = cash > 0 ? (trade.pnlUsd / cash) * 100.0 : 0.0;
                         trade.exitReason = pos.status.name() + (pos.conflictType.equals("TP_SL_CONFLICT") ? "_CONFLICT" : "");
                         trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";
@@ -839,7 +839,7 @@ public class BacktestEngine {
                     double rawPnl = dir == TradeSetup.Direction.BUY ?
                             (trade.exitPrice - trade.entryPrice) * lotSize * 100.0 :
                             (trade.entryPrice - trade.exitPrice) * lotSize * 100.0;
-                    trade.pnlUsd = rawPnl - commissionUsd;
+                    trade.pnlUsd = rawPnl - commissionUsd - totalSpreadSlippageUsd;
                     trade.pnlPercentage = (trade.pnlUsd / cash) * 100.0;
                     trade.exitReason = "END_OF_DATA";
                     trade.outcome = trade.pnlUsd >= 0 ? "WIN" : "LOSS";

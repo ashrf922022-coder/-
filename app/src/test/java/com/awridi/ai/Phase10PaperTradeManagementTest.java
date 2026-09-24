@@ -924,6 +924,48 @@ public class Phase10PaperTradeManagementTest {
         assertTrue(pos.rejectionReason.contains("Kill Switch"));
     }
 
+    @Test
+    public void test56_BacktestFrictionDeductedFromPnL() {
+        List<MarketIntelligenceEngine.Bar> bars = new ArrayList<>();
+        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2605.0, 2595.0, 2600.0, 100.0));
+        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2620.0, 2595.0, 2615.0, 100.0));
+
+        BacktestEngine.BacktestParams params = new BacktestEngine.BacktestParams();
+        params.commissionPerLot = 7.0;
+        params.spreadPips = 2.0;
+        params.slippagePips = 1.0;
+        params.customPositionSizeLot = 1.0;
+
+        BacktestEngine.BacktestResult res = BacktestEngine.runAIBacktest(bars, params, mockPrefs);
+        assertNotNull(res);
+        if (!res.trades.isEmpty()) {
+            BacktestEngine.BacktestTrade trade = res.trades.get(0);
+            assertTrue(trade.commissionPaidUsd > 0);
+            assertTrue(trade.spreadSlippageCostUsd > 0);
+            // Confirm pnlUsd accounts for both commission and spread/slippage costs
+            double expectedDeductions = trade.commissionPaidUsd + trade.spreadSlippageCostUsd;
+            assertTrue(trade.pnlUsd < (trade.exitPrice - trade.entryPrice) * trade.lotSize * 100.0);
+        }
+    }
+
+    @Test
+    public void test57_BacktestIsolationFromPaperTradeHistory() {
+        // Clear paper trade history
+        TradeHistory.clearHistory(mockPrefs);
+        assertEquals(0, TradeHistory.loadPositions(mockPrefs).size());
+
+        List<MarketIntelligenceEngine.Bar> bars = new ArrayList<>();
+        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2605.0, 2595.0, 2600.0, 100.0));
+        bars.add(new MarketIntelligenceEngine.Bar(2600.0, 2620.0, 2595.0, 2615.0, 100.0));
+
+        BacktestEngine.BacktestParams params = new BacktestEngine.BacktestParams();
+        BacktestEngine.BacktestResult res = BacktestEngine.runAIBacktest(bars, params, mockPrefs);
+
+        assertNotNull(res);
+        // Assert that running a backtest does NOT create paper trade records in TradeHistory
+        assertEquals(0, TradeHistory.loadPositions(mockPrefs).size());
+    }
+
     // --- MOCK SHAREDPREFERENCES UTILITY FOR JUNIT RUNTIME ---
     private static class MockSharedPreferences implements SharedPreferences {
         private final Map<String, Object> map = new HashMap<>();
