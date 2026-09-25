@@ -18,16 +18,8 @@ public class PaperTradeEngine {
     public static final String SYMBOL_GOLD = MainActivity.GOLD_SYMBOL;
 
     private final PositionSizingEngine positionSizingEngine = new PositionSizingEngine();
-    private final TradeMonitorEngine tradeMonitorEngine;
+    private final TradeMonitorEngine tradeMonitorEngine = new TradeMonitorEngine();
     private final RiskManagementEngine riskManagementEngine = new RiskManagementEngine();
-
-    public PaperTradeEngine() {
-        this(new TradeMonitorEngine());
-    }
-
-    public PaperTradeEngine(TradeMonitorEngine monitorEngine) {
-        this.tradeMonitorEngine = (monitorEngine != null) ? monitorEngine : new TradeMonitorEngine();
-    }
 
     /**
      * Attempts to open a new paper trade from an AI Decision Result.

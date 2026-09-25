@@ -39,18 +39,6 @@ public class PositionSizingEngine {
             double stopLoss,
             TradePosition.Direction direction,
             double currentOpenExposureLots,
-            int currentOpenTradesCount) {
-        return calculatePositionSize(accountBalance, riskPercentage, entryPrice, stopLoss, direction,
-                currentOpenExposureLots, currentOpenTradesCount, DEFAULT_MAX_RISK_PCT, DEFAULT_MAX_EXPOSURE_LOTS, DEFAULT_MAX_OPEN_TRADES);
-    }
-
-    public static SizingResult calculatePositionSize(
-            double accountBalance,
-            double riskPercentage,
-            double entryPrice,
-            double stopLoss,
-            TradePosition.Direction direction,
-            double currentOpenExposureLots,
             int currentOpenTradesCount,
             double maxRiskPercentage,
             double maxExposureLots,
@@ -71,13 +59,7 @@ public class PositionSizingEngine {
             return res;
         }
 
-        if (maxRiskPercentage <= 0) {
-            res.valid = false;
-            res.rejectionReason = "حد المخاطرة الأقصى المسموح به يجب أن يكون أكبر من الصفر (Max Risk % <= 0).";
-            return res;
-        }
-
-        double allowedMaxRisk = maxRiskPercentage;
+        double allowedMaxRisk = maxRiskPercentage > 0 ? maxRiskPercentage : DEFAULT_MAX_RISK_PCT;
         if (riskPercentage > allowedMaxRisk) {
             res.valid = false;
             res.rejectionReason = String.format(Locale.US,
@@ -99,13 +81,7 @@ public class PositionSizingEngine {
         }
 
         // 2. Max Open Trades Protection
-        if (maxOpenTrades <= 0) {
-            res.valid = false;
-            res.rejectionReason = "حد عدد الصفقات المفتوحة الأقصى يجب أن يكون أكبر من الصفر (Max Open Trades <= 0).";
-            return res;
-        }
-
-        int allowedMaxOpen = maxOpenTrades;
+        int allowedMaxOpen = maxOpenTrades > 0 ? maxOpenTrades : DEFAULT_MAX_OPEN_TRADES;
         if (currentOpenTradesCount >= allowedMaxOpen) {
             res.valid = false;
             res.rejectionReason = String.format(Locale.US,
@@ -153,13 +129,7 @@ public class PositionSizingEngine {
         }
 
         // 5. Exposure Limits Check
-        if (maxExposureLots <= 0) {
-            res.valid = false;
-            res.rejectionReason = "حد التعرض الكلي الأقصى باللوت يجب أن يكون أكبر من الصفر (Max Exposure Lots <= 0).";
-            return res;
-        }
-
-        double allowedMaxExposure = maxExposureLots;
+        double allowedMaxExposure = maxExposureLots > 0 ? maxExposureLots : DEFAULT_MAX_EXPOSURE_LOTS;
         if (currentOpenExposureLots + calculatedLots > allowedMaxExposure + 0.00001) {
             res.valid = false;
             res.rejectionReason = String.format(Locale.US,
