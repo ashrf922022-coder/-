@@ -86,49 +86,106 @@ public class PortfolioManager {
         public double rrRatio;
     }
 
-    // --- Trades Storage ---
+    // --- Trades Storage (Unified with TradeHistory / TradePosition) ---
     public static List<PortfolioTrade> loadTrades(SharedPreferences prefs) {
         List<PortfolioTrade> list = new ArrayList<>();
-        try {
-            String jsonStr = prefs.getString(PREF_KEY_PORTFOLIO_TRADES, null);
-            if (jsonStr == null) {
-                jsonStr = prefs.getString(MainActivity.PREF_KEY_PAPER_TRADES, "[]");
-            }
-            if (jsonStr == null || jsonStr.trim().isEmpty() || jsonStr.trim().equals("[]")) {
-                return list;
-            }
+        if (prefs == null) return list;
 
-            try {
-                JSONArray arr = new JSONArray(jsonStr);
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject obj = arr.getJSONObject(i);
-                    PortfolioTrade t = new PortfolioTrade();
-                    t.id = obj.optString("id", UUID.randomUUID().toString());
-                    t.date = obj.optString("date", "");
-                    t.symbol = obj.optString("symbol", MainActivity.GOLD_SYMBOL);
-                    t.type = obj.optString("type", "BUY");
-                    t.entryPrice = obj.optDouble("entryPrice", 0.0);
-                    t.exitPrice = obj.optDouble("exitPrice", 0.0);
-                    t.stopLoss = obj.optDouble("stopLoss", 0.0);
-                    t.tp1 = obj.optDouble("tp1", 0.0);
-                    t.tp2 = obj.optDouble("tp2", 0.0);
-                    t.lotSize = obj.optDouble("lotSize", 0.1);
-                    t.riskAmount = obj.optDouble("riskAmount", 100.0);
-                    t.expectedProfit = obj.optDouble("expectedProfit", 150.0);
-                    t.pnl = obj.optDouble("pnl", 0.0);
-                    t.rrRatio = obj.optDouble("rrRatio", 1.5);
-                    t.status = obj.optString("status", "OPEN");
-                    t.notes = obj.optString("notes", "");
-                    t.entryReason = obj.optString("entryReason", "تحليل فني لمساعد AWRIDI AI");
-                    t.signalSource = obj.optString("signalSource", "مساعد AWRIDI AI");
-                    list.add(t);
-                }
-            } catch (Throwable unmockedError) {
-                // JVM Fallback parser for unit testing
-                return parseTradesFallback(jsonStr);
+        // 1. Unified Source of Truth: TradeHistory (TradePosition)
+        List<TradePosition> positions = TradeHistory.loadPositions(prefs);
+        for (TradePosition pos : positions) {
+            PortfolioTrade t = new PortfolioTrade();
+            t.id = pos.tradeId;
+            t.date = pos.openTime;
+            t.symbol = pos.symbol != null ? pos.symbol : MainActivity.GOLD_SYMBOL;
+            t.type = pos.direction != null ? pos.direction.name() : "BUY";
+            t.entryPrice = pos.entryPrice;
+            t.exitPrice = pos.currentPrice;
+            t.stopLoss = pos.stopLoss;
+            t.tp1 = pos.takeProfit;
+            t.tp2 = pos.takeProfit;
+            t.lotSize = pos.positionSize;
+            t.riskAmount = pos.riskAmount;
+            t.expectedProfit = pos.riskAmount * pos.riskRewardRatio;
+            t.pnl = (pos.status == TradePosition.Status.OPEN || pos.status == TradePosition.Status.PENDING) ? pos.unrealizedPnL : pos.realizedPnL;
+            t.rrRatio = pos.riskRewardRatio;
+            if (pos.status == TradePosition.Status.TP_HIT || (pos.status == TradePosition.Status.CLOSED && pos.realizedPnL > 0)) {
+                t.status = "WIN";
+            } else if (pos.status == TradePosition.Status.SL_HIT || (pos.status == TradePosition.Status.CLOSED && pos.realizedPnL < 0)) {
+                t.status = "LOSS";
+            } else {
+                t.status = pos.status != null ? pos.status.name() : "OPEN";
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            t.notes = pos.reason != null ? pos.reason : "";
+            t.entryReason = pos.reason != null ? pos.reason : "صفقة ورقية مسجلة";
+            t.signalSource = pos.sourceDecisionId != null ? pos.sourceDecisionId : "PaperTradeEngine";
+            list.add(t);
+        }
+
+        // 2. Legacy fallback migration if TradeHistory is empty
+        if (list.isEmpty()) {
+            try {
+                String jsonStr = prefs.getString(PREF_KEY_PORTFOLIO_TRADES, null);
+                if (jsonStr == null) {
+                    jsonStr = prefs.getString(MainActivity.PREF_KEY_PAPER_TRADES, "[]");
+                }
+                if (jsonStr != null && !jsonStr.trim().isEmpty() && !jsonStr.trim().equals("[]")) {
+                    List<PortfolioTrade> legacyList;
+                    try {
+                        legacyList = new ArrayList<>();
+                        JSONArray arr = new JSONArray(jsonStr);
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject obj = arr.getJSONObject(i);
+                            PortfolioTrade t = new PortfolioTrade();
+                            t.id = obj.optString("id", UUID.randomUUID().toString());
+                            t.date = obj.optString("date", "");
+                            t.symbol = obj.optString("symbol", MainActivity.GOLD_SYMBOL);
+                            t.type = obj.optString("type", "BUY");
+                            t.entryPrice = obj.optDouble("entryPrice", 0.0);
+                            t.exitPrice = obj.optDouble("exitPrice", 0.0);
+                            t.stopLoss = obj.optDouble("stopLoss", 0.0);
+                            t.tp1 = obj.optDouble("tp1", 0.0);
+                            t.tp2 = obj.optDouble("tp2", 0.0);
+                            t.lotSize = obj.optDouble("lotSize", 0.1);
+                            t.riskAmount = obj.optDouble("riskAmount", 100.0);
+                            t.expectedProfit = obj.optDouble("expectedProfit", 150.0);
+                            t.pnl = obj.optDouble("pnl", 0.0);
+                            t.rrRatio = obj.optDouble("rrRatio", 1.5);
+                            t.status = obj.optString("status", "OPEN");
+                            t.notes = obj.optString("notes", "");
+                            t.entryReason = obj.optString("entryReason", "تحليل فني لمساعد AWRIDI AI");
+                            t.signalSource = obj.optString("signalSource", "مساعد AWRIDI AI");
+                            legacyList.add(t);
+                        }
+                    } catch (Throwable unmockedError) {
+                        legacyList = parseTradesFallback(jsonStr);
+                    }
+
+                    for (PortfolioTrade pt : legacyList) {
+                        TradePosition pos = new TradePosition();
+                        pos.tradeId = pt.id;
+                        pos.symbol = pt.symbol;
+                        pos.direction = "SELL".equalsIgnoreCase(pt.type) ? TradePosition.Direction.SELL : TradePosition.Direction.BUY;
+                        try {
+                            pos.status = TradePosition.Status.valueOf(pt.status);
+                        } catch (Exception ignored) {
+                            pos.status = TradePosition.Status.OPEN;
+                        }
+                        pos.entryPrice = pt.entryPrice;
+                        pos.stopLoss = pt.stopLoss;
+                        pos.takeProfit = pt.tp1 > 0 ? pt.tp1 : pt.tp2;
+                        pos.positionSize = pt.lotSize;
+                        pos.riskAmount = pt.riskAmount;
+                        pos.realizedPnL = pt.pnl;
+                        pos.openTime = pt.date;
+                        pos.reason = pt.notes;
+                        TradeHistory.saveTrade(prefs, pos);
+                        list.add(pt);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
         return list;
     }
@@ -177,41 +234,35 @@ public class PortfolioManager {
     }
 
     public static void saveTrades(SharedPreferences prefs, List<PortfolioTrade> list) {
-        try {
-            StringBuilder sb = new StringBuilder();
-            sb.append("[");
-            for (int i = 0; i < list.size(); i++) {
-                PortfolioTrade t = list.get(i);
-                if (i > 0) sb.append(",");
-                sb.append("{")
-                  .append("\"id\":\"").append(t.id != null ? t.id : "").append("\",")
-                  .append("\"date\":\"").append(t.date != null ? t.date : "").append("\",")
-                  .append("\"symbol\":\"").append(t.symbol != null ? t.symbol : "").append("\",")
-                  .append("\"type\":\"").append(t.type != null ? t.type : "").append("\",")
-                  .append("\"entryPrice\":").append(String.format(Locale.US, "%.2f", t.entryPrice)).append(",")
-                  .append("\"exitPrice\":").append(String.format(Locale.US, "%.2f", t.exitPrice)).append(",")
-                  .append("\"stopLoss\":").append(String.format(Locale.US, "%.2f", t.stopLoss)).append(",")
-                  .append("\"tp1\":").append(String.format(Locale.US, "%.2f", t.tp1)).append(",")
-                  .append("\"tp2\":").append(String.format(Locale.US, "%.2f", t.tp2)).append(",")
-                  .append("\"lotSize\":").append(String.format(Locale.US, "%.2f", t.lotSize)).append(",")
-                  .append("\"riskAmount\":").append(String.format(Locale.US, "%.2f", t.riskAmount)).append(",")
-                  .append("\"expectedProfit\":").append(String.format(Locale.US, "%.2f", t.expectedProfit)).append(",")
-                  .append("\"pnl\":").append(String.format(Locale.US, "%.2f", t.pnl)).append(",")
-                  .append("\"rrRatio\":").append(String.format(Locale.US, "%.2f", t.rrRatio)).append(",")
-                  .append("\"status\":\"").append(t.status != null ? t.status : "").append("\",")
-                  .append("\"notes\":\"").append(t.notes != null ? t.notes : "").append("\",")
-                  .append("\"entryReason\":\"").append(t.entryReason != null ? t.entryReason : "").append("\",")
-                  .append("\"signalSource\":\"").append(t.signalSource != null ? t.signalSource : "").append("\"")
-                  .append("}");
+        if (prefs == null || list == null) return;
+        for (PortfolioTrade pt : list) {
+            TradePosition pos = TradeHistory.getTradeById(prefs, pt.id);
+            if (pos == null) {
+                pos = new TradePosition();
+                pos.tradeId = pt.id;
             }
-            sb.append("]");
-
-            prefs.edit()
-                .putString(PREF_KEY_PORTFOLIO_TRADES, sb.toString())
-                .putString(MainActivity.PREF_KEY_PAPER_TRADES, sb.toString())
-                .apply();
-        } catch (Exception e) {
-            e.printStackTrace();
+            pos.symbol = pt.symbol != null ? pt.symbol : MainActivity.GOLD_SYMBOL;
+            pos.direction = "SELL".equalsIgnoreCase(pt.type) ? TradePosition.Direction.SELL : TradePosition.Direction.BUY;
+            if ("WIN".equalsIgnoreCase(pt.status) || "TP_HIT".equalsIgnoreCase(pt.status)) {
+                pos.status = TradePosition.Status.TP_HIT;
+            } else if ("LOSS".equalsIgnoreCase(pt.status) || "SL_HIT".equalsIgnoreCase(pt.status)) {
+                pos.status = TradePosition.Status.SL_HIT;
+            } else {
+                try {
+                    pos.status = TradePosition.Status.valueOf(pt.status);
+                } catch (Exception ignored) {
+                    pos.status = TradePosition.Status.CLOSED;
+                }
+            }
+            pos.entryPrice = pt.entryPrice;
+            pos.stopLoss = pt.stopLoss;
+            pos.takeProfit = pt.tp1 > 0 ? pt.tp1 : pt.tp2;
+            pos.positionSize = pt.lotSize;
+            pos.riskAmount = pt.riskAmount;
+            pos.realizedPnL = pt.pnl;
+            pos.openTime = pt.date != null && !pt.date.isEmpty() ? pt.date : pos.openTime;
+            pos.reason = pt.notes;
+            TradeHistory.saveTrade(prefs, pos);
         }
     }
 

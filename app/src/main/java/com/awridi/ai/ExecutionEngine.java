@@ -182,18 +182,17 @@ public class ExecutionEngine {
 
     private void syncWithPortfolio(SharedPreferences prefs, ExecutionOrder order) {
         try {
-            GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
-            res.currentPrice = order.fillPrice > 0 ? order.fillPrice : order.price;
-            res.signal = order.action == ExecutionOrder.Action.BUY ? "BUY" : "SELL";
-            res.entryPrice = order.fillPrice > 0 ? order.fillPrice : order.price;
-            res.stopLoss = order.stopLoss;
-            res.takeProfit1 = order.takeProfit;
-            res.takeProfit2 = order.takeProfit;
-            res.suggestedLot = order.lotSize;
-            res.riskRewardRatio = order.riskRewardRatio;
-            res.arabicExplanation = "صفقة نفذت عبر ExecutionEngine (" + order.orderType + ")";
+            AIDecisionResult aiResult = new AIDecisionResult();
+            aiResult.decision = order.action == ExecutionOrder.Action.BUY ? AIDecisionResult.Decision.BUY : AIDecisionResult.Decision.SELL;
+            aiResult.entryPrice = order.fillPrice > 0 ? order.fillPrice : order.price;
+            aiResult.stopLoss = order.stopLoss;
+            aiResult.takeProfit = order.takeProfit;
+            aiResult.positionSizeLot = order.lotSize;
+            aiResult.riskRewardRatio = order.riskRewardRatio;
+            aiResult.riskApproved = true;
 
-            PortfolioManager.executeTradeFromSignal(prefs, res, order.signalSource);
+            PaperTradeEngine pEngine = new PaperTradeEngine();
+            pEngine.openPaperTradeFromAIDecision(aiResult, prefs);
         } catch (Exception e) {
             e.printStackTrace();
         }
