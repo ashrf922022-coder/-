@@ -74,12 +74,9 @@ public class PaperTradingManager {
     }
 
     public static void closeTrade(SharedPreferences prefs, PaperTrade trade, boolean isWin) {
-        PortfolioManager.PortfolioTrade pt = new PortfolioManager.PortfolioTrade();
-        pt.id = trade.id;
-        pt.entryPrice = trade.entryPrice;
-        pt.stopLoss = trade.stopLoss;
-        pt.tp1 = trade.tp1;
-        pt.riskAmount = Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_CAPITAL, "10000")) * (Double.parseDouble(prefs.getString(MainActivity.PREF_KEY_RISK_PCT, "1.0")) / 100.0);
-        PortfolioManager.closeTrade(prefs, pt, isWin, 0.0);
+        if (prefs == null || trade == null || trade.id == null) return;
+        PaperTradeEngine engine = new PaperTradeEngine();
+        double customPrice = isWin ? trade.tp1 : trade.stopLoss;
+        engine.closePaperTrade(trade.id, customPrice, prefs);
     }
 }

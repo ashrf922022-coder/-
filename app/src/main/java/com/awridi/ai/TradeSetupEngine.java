@@ -30,28 +30,38 @@ public class TradeSetupEngine {
     }
 
     /**
-     * Evaluates bars up to the end of the list and creates a TradeSetup.
+     * Evaluates bars up to the end of the list and creates a TradeSetup via SignalEngine.
      */
     public TradeSetup createTradeSetup(List<MarketIntelligenceEngine.Bar> bars) {
         if (bars == null || bars.isEmpty()) {
             return createInvalidSetup("قائمة الشموع فارغة أو غير متوفرة (null/empty).");
         }
-        TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
-        TradingDecisionResult decisionResult = decisionEngine.evaluate(bars);
-        return createTradeSetup(decisionResult, bars);
+        SignalEngine signalEngine = new SignalEngine(this.minRiskRewardRatio, 60.0);
+        SignalEngine.SignalResult signalResult = signalEngine.generateSignal(bars);
+        return createTradeSetupFromSignal(signalResult);
     }
 
     /**
-     * Evaluates historical bars strictly up to targetIndex to prevent Look-Ahead Bias.
+     * Evaluates historical bars strictly up to targetIndex to prevent Look-Ahead Bias via SignalEngine.
      */
     public TradeSetup evaluateAtCandle(List<MarketIntelligenceEngine.Bar> bars, int targetIndex) {
         if (bars == null || targetIndex < 0 || targetIndex >= bars.size()) {
             return createInvalidSetup("مؤشر الشمعة المستهدف غير صالح أو خارج نطاق البيانات.");
         }
-        TradingDecisionEngine decisionEngine = new TradingDecisionEngine();
-        TradingDecisionResult decisionResult = decisionEngine.evaluateAtCandle(bars, targetIndex);
-        List<MarketIntelligenceEngine.Bar> slicedBars = new ArrayList<>(bars.subList(0, targetIndex + 1));
-        return createTradeSetup(decisionResult, slicedBars);
+        SignalEngine signalEngine = new SignalEngine(this.minRiskRewardRatio, 60.0);
+        SignalEngine.SignalResult signalResult = signalEngine.generateSignalAtCandle(bars, targetIndex);
+        return createTradeSetupFromSignal(signalResult);
+    }
+
+    /**
+     * Creates a TradeSetup directly from a SignalEngine.SignalResult.
+     */
+    public TradeSetup createTradeSetupFromSignal(SignalEngine.SignalResult signalResult) {
+        if (signalResult == null) {
+            return createInvalidSetup("نتيجة محرك الإشارات غير متوفرة (null).");
+        }
+        SignalEngine signalEngine = new SignalEngine(this.minRiskRewardRatio, 60.0);
+        return signalEngine.toTradeSetup(signalResult);
     }
 
     /**

@@ -21,6 +21,9 @@ public class MainActivity extends Activity {
     ExecutorService executor = Executors.newFixedThreadPool(4);
     JSONObject design, strat;
 
+    // Execution Engine
+    ExecutionEngine executionEngine = new ExecutionEngine();
+
     // Theme Colors
     int primaryColor, secondaryColor, backgroundColor, surfaceColor, textColor, mutedColor;
 
@@ -43,7 +46,14 @@ public class MainActivity extends Activity {
     // Current Analysis Caches
     GoldAnalysisEngine.AnalysisResult currentAnalysis = null;
     MarketIntelligenceEngine.Result currentMiResult = null;
+    SignalEngine.SignalResult currentSignalResult = null;
     TradeSetup currentTradeSetup = null;
+    AIDecisionResult currentAiDecisionResult = null;
+
+    // Backtest Caches
+    BacktestEngine.BacktestResult currentBacktestResult = null;
+    WalkForwardEngine.WalkForwardResult currentWfResult = null;
+    MonteCarloEngine.MonteCarloResult currentMcResult = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -191,6 +201,8 @@ public class MainActivity extends Activity {
 
         String[] tabs = {
                 "الرئيسية",
+                "🎯 القرار الذكي",
+                "⚡ التداول",
                 "المحفظة",
                 "Backtest",
                 "🧠 ذكاء السوق",
@@ -200,6 +212,8 @@ public class MainActivity extends Activity {
 
         String[] keys = {
                 "home",
+                "ai_decision",
+                "trading",
                 "portfolio",
                 "backtest",
                 "market_intelligence",
@@ -227,6 +241,14 @@ public class MainActivity extends Activity {
         switch (tabKey) {
             case "home":
                 showHomeScreen();
+                break;
+
+            case "ai_decision":
+                showTradeDecisionCenterScreen();
+                break;
+
+            case "trading":
+                showTradingScreen();
                 break;
 
             case "portfolio":
@@ -313,7 +335,7 @@ public class MainActivity extends Activity {
                 GoldAnalysisEngine.AnalysisResult result = GoldAnalysisEngine.analyzeGold(mtfBars, prefs);
                 currentAnalysis = result;
 
-                // Evaluate TradeSetup using TradeSetupEngine
+                // Evaluate Signal Engine & TradeSetup using SignalEngine and TradeSetupEngine (Phase 6 Pipeline)
                 List<GoldAnalysisEngine.Bar> baseBars = mtfBars.get("15min");
                 if (baseBars == null || baseBars.isEmpty()) {
                     baseBars = mtfBars.values().iterator().next();
@@ -322,8 +344,12 @@ public class MainActivity extends Activity {
                 for (GoldAnalysisEngine.Bar gb : baseBars) {
                     miBars.add(new MarketIntelligenceEngine.Bar(gb.o, gb.h, gb.l, gb.c, gb.v));
                 }
+
+                SignalEngine signalEngine = new SignalEngine();
+                currentSignalResult = signalEngine.generateSignal(miBars);
+
                 TradeSetupEngine setupEngine = new TradeSetupEngine();
-                currentTradeSetup = setupEngine.createTradeSetup(miBars);
+                currentTradeSetup = setupEngine.createTradeSetupFromSignal(currentSignalResult);
 
                 runOnUiThread(() -> {
                     statusText.setText("✅ اكتمل التحليل بنجاح!");
@@ -350,23 +376,41 @@ public class MainActivity extends Activity {
         priceCard.addView(createTextView("التحديث: " + new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()), 12, false));
         content.addView(priceCard);
 
-        LinearLayout signalCard = createCardBox();
-        signalCard.addView(createTextView("🎯 قرار النظام وإشارة التداول", 16, true));
+        // Phase 6 Market Intelligence & Signal Engine Display
+        if (currentSignalResult != null) {
+            LinearLayout sigEngineCard = createCardBox();
+            sigEngineCard.addView(createTextView("🧠 محرك الإشارات وذكاء السوق (Signal Engine & Market Intelligence)", 18, true));
 
-        TextView signalTv = createTextView(res.signal, 24, true);
-        if (res.signal.contains("BUY")) signalTv.setTextColor(Color.GREEN);
-        else if (res.signal.contains("SELL")) signalTv.setTextColor(Color.RED);
-        else if (res.signal.equals("WAIT")) signalTv.setTextColor(Color.YELLOW);
-        else signalTv.setTextColor(Color.GRAY);
-        signalCard.addView(signalTv);
+            TextView sigTypeTv = createTextView("الإشارة: " + currentSignalResult.signalType.name(), 24, true);
+            if (currentSignalResult.signalType == SignalEngine.SignalType.BUY) {
+                sigTypeTv.setTextColor(Color.GREEN);
+            } else if (currentSignalResult.signalType == SignalEngine.SignalType.SELL) {
+                sigTypeTv.setTextColor(Color.RED);
+            } else {
+                sigTypeTv.setTextColor(Color.YELLOW);
+            }
+            sigEngineCard.addView(sigTypeTv);
 
-        signalCard.addView(createTextView("نسبة توافق الشروط (الثقة): " + String.format(Locale.US, "%.0f%%", res.confidenceScore * 100), 14, true));
-        content.addView(signalCard);
+            sigEngineCard.addView(createTextView("• حالة السوق (Market State): " + (currentSignalResult.tradingDecisionResult != null && currentSignalResult.tradingDecisionResult.marketRegime != null ? currentSignalResult.tradingDecisionResult.marketRegime.regime.name() : "متوازن"), 14, true));
+            sigEngineCard.addView(createTextView("• اتجاه السوق (Trend): " + currentSignalResult.trendName + " (قوة الاتجاه: " + currentSignalResult.trendStrength + ")", 14, true));
+            sigEngineCard.addView(createTextView("• الزخم والتقلب: " + currentSignalResult.momentum + " | " + currentSignalResult.volatility, 13, false));
+            sigEngineCard.addView(createTextView("• درجة الثقة (Confidence): " + String.format(Locale.US, "%.1f%%", currentSignalResult.confidence), 14, true));
 
-        // Display Trade Setup Box & Risk Management (Phase 5 Risk Integration)
+            if (currentSignalResult.signalType != SignalEngine.SignalType.HOLD) {
+                sigEngineCard.addView(createTextView("• سعر الدخول المقترح (Entry): $" + String.format(Locale.US, "%.2f", currentSignalResult.entryPrice), 14, true));
+                sigEngineCard.addView(createTextView("• وقف الخسارة المقترح (Stop Loss): $" + String.format(Locale.US, "%.2f", currentSignalResult.suggestedStopLoss), 14, true));
+                sigEngineCard.addView(createTextView("• هدف الربح المقترح (Take Profit): $" + String.format(Locale.US, "%.2f", currentSignalResult.suggestedTakeProfit), 14, true));
+                sigEngineCard.addView(createTextView("• نسبة المخاطرة إلى العائد (Risk/Reward): 1 : " + String.format(Locale.US, "%.2f", currentSignalResult.suggestedRiskReward), 14, true));
+            }
+
+            sigEngineCard.addView(createTextView("\n• سبب الإشارة:\n" + currentSignalResult.signalReason, 13, false));
+            content.addView(sigEngineCard);
+        }
+
+        // Display Trade Setup Box & Risk Management (Phase 6 Integration)
         if (currentTradeSetup != null) {
             LinearLayout setupCard = createCardBox();
-            setupCard.addView(createTextView("🎯 إعداد الصفقة وحساب المخاطر (Trade Setup & Risk Management)", 16, true));
+            setupCard.addView(createTextView("🛡️ نتيجة تقييم إدارة المخاطر (Risk Management Evaluation)", 16, true));
 
             double cap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
             double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
@@ -374,28 +418,28 @@ public class MainActivity extends Activity {
 
             PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
 
-            RiskManagementEngine riskEngine = new RiskManagementEngine();
+            RiskManagementEngine riskEngine = executionEngine.getRiskEngine();
             riskEngine.setMaxDailyLossPercentage(maxDailyLossPct);
             RiskManagementEngine.RiskResult riskResult = riskEngine.evaluateTradeSetupRisk(currentTradeSetup, cap, riskPct, summary.todayLossPnl);
 
             if (currentTradeSetup.valid && riskResult.valid) {
-                TextView setupDirTv = createTextView("اتجاه الإعداد: " + currentTradeSetup.direction.name(), 18, true);
+                TextView resultTv = createTextView("نتيجة إدارة المخاطر: مقبول (ACCEPTED) ✅", 16, true);
+                resultTv.setTextColor(Color.GREEN);
+                setupCard.addView(resultTv);
+
+                TextView setupDirTv = createTextView("اتجاه الصفقة: " + currentTradeSetup.direction.name(), 16, true);
                 setupDirTv.setTextColor(currentTradeSetup.direction == TradeSetup.Direction.BUY ? Color.GREEN : Color.RED);
                 setupCard.addView(setupDirTv);
 
-                setupCard.addView(createTextView("• رأس المال: $" + String.format(Locale.US, "%.2f", riskResult.accountBalance), 14, false));
-                setupCard.addView(createTextView("• نسبة المخاطرة: " + String.format(Locale.US, "%.2f%%", riskResult.riskPercentage) + " ($" + String.format(Locale.US, "%.2f", riskResult.riskAmount) + ")", 14, true));
+                setupCard.addView(createTextView("• رأس المال (Balance): $" + String.format(Locale.US, "%.2f", riskResult.accountBalance), 14, false));
+                setupCard.addView(createTextView("• قيمة المخاطرة (Risk Amount): " + String.format(Locale.US, "%.2f%%", riskResult.riskPercentage) + " ($" + String.format(Locale.US, "%.2f", riskResult.riskAmount) + ")", 14, true));
                 setupCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", riskResult.entryPrice), 14, true));
                 setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", riskResult.stopLoss) + " (مسافة: $" + String.format(Locale.US, "%.2f", riskResult.riskDistance) + ")", 14, true));
                 setupCard.addView(createTextView("• أخذ الربح (Take Profit): $" + String.format(Locale.US, "%.2f", riskResult.takeProfit) + " (مسافة: $" + String.format(Locale.US, "%.2f", riskResult.rewardDistance) + ")", 14, true));
-                setupCard.addView(createTextView("• Risk/Reward Ratio: 1 : " + String.format(Locale.US, "%.2f", riskResult.riskRewardRatio), 14, true));
-                setupCard.addView(createTextView("• حجم الصفقة المحسوب (Position Size): " + String.format(Locale.US, "%.2f", riskResult.positionSize) + " لوت", 14, true));
+                setupCard.addView(createTextView("• نسبة المخاطرة/العائد (Risk/Reward Ratio): 1 : " + String.format(Locale.US, "%.2f", riskResult.riskRewardRatio), 14, true));
+                setupCard.addView(createTextView("• حجم اللوت المحسوب (Position Size): " + String.format(Locale.US, "%.2f", riskResult.positionSize) + " لوت", 14, true));
                 setupCard.addView(createTextView("• الحد الأقصى للخسارة اليومية: $" + String.format(Locale.US, "%.2f", riskResult.maximumDailyLossAmount) + " (" + String.format(Locale.US, "%.1f%%", riskResult.maximumDailyLoss) + ")", 14, false));
                 setupCard.addView(createTextView("• الخسارة اليومية الحالية: $" + String.format(Locale.US, "%.2f", riskResult.currentDailyLoss), 14, false));
-
-                TextView statusValidTv = createTextView("الحالة: Risk Valid ✅", 14, true);
-                statusValidTv.setTextColor(Color.GREEN);
-                setupCard.addView(statusValidTv);
 
                 if (!riskResult.warnings.isEmpty()) {
                     for (String warn : riskResult.warnings) {
@@ -405,17 +449,17 @@ public class MainActivity extends Activity {
                     }
                 }
 
-                Button paperBtn = createButton("📝 فتح صفقة تجريبية بإعداد Trade Setup", v -> executePaperTradeFromSetup(currentTradeSetup));
+                Button paperBtn = createButton("📝 تنفيذ الصفقة عبر ExecutionEngine", v -> executePaperTradeFromSetup(currentTradeSetup));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.setMargins(0, 10, 0, 0);
                 setupCard.addView(paperBtn, lp);
             } else {
-                TextView setupWaitTv = createTextView("WAIT / RISK BLOCKED — الصفقة مرفوضة من إدارة المخاطر 🛑", 16, true);
-                setupWaitTv.setTextColor(Color.RED);
-                setupCard.addView(setupWaitTv);
+                TextView resultTv = createTextView("نتيجة إدارة المخاطر: مرفوض (REJECTED / BLOCKED) ❌", 16, true);
+                resultTv.setTextColor(Color.RED);
+                setupCard.addView(resultTv);
 
-                String rejReason = !currentTradeSetup.valid ? "إعداد الصفقة الفني غير صالح." : riskResult.rejectionReason;
-                TextView reasonTv = createTextView("سبب الرفض: " + rejReason, 14, true);
+                String rejReason = !currentTradeSetup.valid ? "إعداد الصفقة الفني غير صالح أو الإشارة هي HOLD." : riskResult.rejectionReason;
+                TextView reasonTv = createTextView("سبب الرفض (Rejection Reason):\n" + rejReason, 14, true);
                 reasonTv.setTextColor(Color.YELLOW);
                 setupCard.addView(reasonTv);
 
@@ -480,6 +524,675 @@ public class MainActivity extends Activity {
         warningCard.addView(createTextView("⚠️ تحذير هام من المخاطر", 15, true));
         warningCard.addView(createTextView("سوق الذهب يتسم بالتقلب العالي. هذه الإشارات والمعلومات لأغراض التعليم والتحليل والتداول التجريبي فقط. لا توجد أي إشارة مضمونة الربح.", 13, false));
         content.addView(warningCard);
+    }
+
+    // --- SCREEN 1.2: TRADE DECISION CENTER (PHASE 9 AI DECISION ENGINE) ---
+    void showTradeDecisionCenterScreen() {
+        setupBaseLayout("ai_decision");
+
+        LinearLayout heroCard = createCardBox();
+        heroCard.addView(createTextView("🎯 مركز قرار الصفقة (Trade Decision Center)", 20, true));
+        heroCard.addView(createTextView("محرك القرار الذكي + توافق الإشارات + تقييم حالة السوق وبوابة إدارة المخاطر", 13, false));
+
+        TextView liveStatusTv = createTextView("• حالة التداول الحي: غير مفعل — LIVE TRADING = DISABLED 🔒", 13, true);
+        liveStatusTv.setTextColor(Color.parseColor("#FF9800"));
+        heroCard.addView(liveStatusTv);
+        content.addView(heroCard);
+
+        // Kill Switch Management Section in Trade Decision Center
+        displayKillSwitchCard();
+
+        // Risk Status Section
+        displayRiskStatusCard();
+
+        LinearLayout actionCard = createCardBox();
+        actionCard.addView(createTextView("⚡ تقييم قرار الصفقة الذكي الآن", 16, true));
+
+        Button evalBtn = createButton("🧠 تشغيل محرك القرار AI Decision Engine", v -> runAIDecisionEngineEvaluation());
+        actionCard.addView(evalBtn);
+
+        statusText = createTextView("اضغط على الزر أعلاه لتجميع الإشارات وإحالة القرار إلى Risk Gate.", 13, false);
+        statusText.setTextColor(mutedColor);
+        actionCard.addView(statusText);
+        content.addView(actionCard);
+
+        if (currentAiDecisionResult != null) {
+            displayAIDecisionResult(currentAiDecisionResult);
+        }
+
+        displayPaperTradesSection();
+
+        displayPaperTradeHistorySection();
+
+        displayAIDecisionHistorySection();
+    }
+
+    void displayKillSwitchCard() {
+        LinearLayout killCard = createCardBox();
+        boolean killActive = KillSwitch.isActive(prefs);
+
+        if (killActive) {
+            GradientDrawable kGd = new GradientDrawable();
+            kGd.setColor(Color.parseColor("#3A1319"));
+            kGd.setCornerRadius(16);
+            kGd.setStroke(2, Color.RED);
+            killCard.setBackground(kGd);
+
+            TextView kTv = createTextView("🚨 مفتاح الطوارئ (Kill Switch): مفعّل 🔴", 16, true);
+            kTv.setTextColor(Color.RED);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("التداول التجريبي محظور حالياً لحماية الحساب من أية صفقات جديدة.", 13, false));
+
+            Button disableKBtn = createSecondaryButton("🟢 إيقاف مفتاح الطوارئ", v -> {
+                KillSwitch.deactivate(prefs);
+                Toast.makeText(this, "تم إيقاف مفتاح الطوارئ.", Toast.LENGTH_SHORT).show();
+                showTradeDecisionCenterScreen();
+            });
+            killCard.addView(disableKBtn);
+        } else {
+            TextView kTv = createTextView("🛡️ مفتاح الطوارئ (Kill Switch): غير مفعّل 🟢", 16, true);
+            kTv.setTextColor(Color.GREEN);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("مفتاح الأمان جاهز. عند التفعيل سيتم حظر التداول ورفض أي أمر جديد.", 13, false));
+
+            Button enableKBtn = createButton("🚨 تفعيل مفتاح الطوارئ (Kill Switch)", v -> {
+                KillSwitch.activate(prefs);
+                Toast.makeText(this, "تم تفعيل مفتاح الطوارئ وحظر الصفقات الجديدة!", Toast.LENGTH_SHORT).show();
+                showTradeDecisionCenterScreen();
+            });
+            enableKBtn.setBackgroundColor(Color.RED);
+            killCard.addView(enableKBtn);
+        }
+        content.addView(killCard);
+    }
+
+    void displayRiskStatusCard() {
+        LinearLayout riskCard = createCardBox();
+        riskCard.addView(createTextView("🛡️ حالة المخاطر (Risk Status)", 18, true));
+
+        PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
+        boolean killActive = KillSwitch.isActive(prefs);
+        double cap = summary.baseCapital;
+        double maxDailyLossPct = Double.parseDouble(prefs.getString(PortfolioManager.PREF_KEY_MAX_DAILY_LOSS, "3.0"));
+        double maxDailyLossUsd = cap * (maxDailyLossPct / 100.0);
+
+        List<TradePosition> openTrades = TradeHistory.getOpenTrades(prefs);
+        double openExposureLots = 0.0;
+        for (TradePosition p : openTrades) openExposureLots += p.positionSize;
+
+        boolean riskGateApproved = !killActive && !summary.isDailyLossExceeded && !summary.isDailyTradesExceeded && openTrades.size() < summary.maxDailyTrades;
+
+        TextView gateTv = createTextView("• بوابة إدارة المخاطر (Risk Gate): " + (riskGateApproved ? "مقبولة ✅" : "محظورة ❌"), 15, true);
+        gateTv.setTextColor(riskGateApproved ? Color.GREEN : Color.RED);
+        riskCard.addView(gateTv);
+
+        TextView killTv = createTextView("• مفتاح الطوارئ (Kill Switch): " + (killActive ? "مفعّل 🔴" : "غير مفعّل 🟢"), 14, true);
+        killTv.setTextColor(killActive ? Color.RED : Color.GREEN);
+        riskCard.addView(killTv);
+
+        riskCard.addView(createTextView("• الخسارة اليومية الحالية: $" + String.format(Locale.US, "%.2f", summary.todayLossPnl) + " / $" + String.format(Locale.US, "%.2f", maxDailyLossUsd) + " (" + String.format(Locale.US, "%.1f%%", summary.todayLossPct) + " من " + String.format(Locale.US, "%.1f%%", maxDailyLossPct) + ")", 13, false));
+        riskCard.addView(createTextView("• الصفقات المفتوحة حالياً: " + openTrades.size() + " / " + summary.maxDailyTrades + " (التعرض الكلي: " + String.format(Locale.US, "%.2f", openExposureLots) + " لوت)", 13, false));
+        riskCard.addView(createTextView("• سلسلة الخسائر المتتالية: " + summary.longestLosingStreak + " صفقات", 13, false));
+
+        content.addView(riskCard);
+    }
+
+    void displayPaperTradesSection() {
+        LinearLayout paperCard = createCardBox();
+        paperCard.addView(createTextView("📝 الصفقات الورقية النشطة (Active Paper Trades)", 18, true));
+
+        List<TradePosition> openTrades = TradeHistory.getOpenTrades(prefs);
+        if (openTrades.isEmpty()) {
+            paperCard.addView(createTextView("لا توجد صفقات ورقية مفتوحة حاليًا.", 13, false));
+        } else {
+            PaperTradeEngine pEngine = new PaperTradeEngine();
+            for (TradePosition pt : openTrades) {
+                LinearLayout item = createCardBox();
+                TextView hTv = createTextView("📌 " + pt.direction.name() + " " + pt.symbol + " | Lot: " + String.format(Locale.US, "%.2f", pt.positionSize) + " [" + pt.status.name() + "]", 15, true);
+                hTv.setTextColor(pt.direction == TradePosition.Direction.BUY ? Color.GREEN : Color.RED);
+                item.addView(hTv);
+
+                item.addView(createTextView("Entry: $" + String.format(Locale.US, "%.2f", pt.entryPrice) + " | Current: $" + String.format(Locale.US, "%.2f", pt.currentPrice), 13, true));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", pt.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", pt.takeProfit) + " | R:R: 1:" + String.format(Locale.US, "%.2f", pt.riskRewardRatio), 13, false));
+                item.addView(createTextView("المخاطرة: $" + String.format(Locale.US, "%.2f", pt.riskAmount) + " | R Multiple: " + String.format(Locale.US, "%+.2f", pt.rMultiple), 13, false));
+
+                TextView pnlTv = createTextView("PnL غير محقق: $" + String.format(Locale.US, "%+.2f", pt.unrealizedPnL), 14, true);
+                pnlTv.setTextColor(pt.unrealizedPnL >= 0 ? Color.GREEN : Color.RED);
+                item.addView(pnlTv);
+
+                Button closeBtn = createSecondaryButton("إغلاق الصفقة الورقية", v -> {
+                    pEngine.closePaperTrade(pt.tradeId, pt.currentPrice, prefs);
+                    Toast.makeText(this, "تم إغلاق الصفقة الورقية بنجاح", Toast.LENGTH_SHORT).show();
+                    showTradeDecisionCenterScreen();
+                });
+                item.addView(closeBtn);
+                paperCard.addView(item);
+            }
+        }
+        content.addView(paperCard);
+    }
+
+    void displayPaperTradeHistorySection() {
+        LinearLayout histCard = createCardBox();
+        histCard.addView(createTextView("📜 سجل الصفقات الورقية (Paper Trade History)", 18, true));
+
+        List<TradePosition> all = TradeHistory.loadPositions(prefs);
+        List<TradePosition> closed = TradeHistory.getClosedTrades(prefs);
+        List<TradePosition> wins = TradeHistory.getWinningTrades(prefs);
+        List<TradePosition> losses = TradeHistory.getLosingTrades(prefs);
+        List<TradePosition> rejected = TradeHistory.getRejectedTrades(prefs);
+
+        histCard.addView(createTextView("ملخص السجل: إجمالي: " + all.size() + " | مغلقة: " + closed.size() + " | رابحة: " + wins.size() + " | خاسرة: " + losses.size() + " | مرفوضة/محظورة: " + rejected.size(), 13, true));
+
+        if (all.isEmpty()) {
+            histCard.addView(createTextView("لا توجد صفقات مسجلة في السجل الورقي بعد.", 13, false));
+        } else {
+            for (int i = all.size() - 1; i >= 0; i--) {
+                TradePosition p = all.get(i);
+                LinearLayout item = createCardBox();
+
+                TextView hTv = createTextView("📌 " + p.tradeId + " | " + p.direction.name() + " " + p.symbol + " (" + p.status.name() + ")", 14, true);
+                if (p.status == TradePosition.Status.TP_HIT || p.realizedPnL > 0) hTv.setTextColor(Color.GREEN);
+                else if (p.status == TradePosition.Status.SL_HIT || p.realizedPnL < 0) hTv.setTextColor(Color.RED);
+                else if (p.status == TradePosition.Status.REJECTED || p.status == TradePosition.Status.BLOCKED) hTv.setTextColor(Color.parseColor("#FF9800"));
+                else hTv.setTextColor(Color.YELLOW);
+                item.addView(hTv);
+
+                item.addView(createTextView("Entry: $" + String.format(Locale.US, "%.2f", p.entryPrice) + " | SL: $" + String.format(Locale.US, "%.2f", p.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", p.takeProfit), 12, false));
+                item.addView(createTextView("Realized PnL: $" + String.format(Locale.US, "%+.2f", p.realizedPnL) + " | R: " + String.format(Locale.US, "%+.2f", p.rMultiple) + " | Lot: " + String.format(Locale.US, "%.2f", p.positionSize), 13, true));
+
+                if (p.conflictType.equals("TP_SL_CONFLICT")) {
+                    TextView cTv = createTextView("⚠️ تعارض TP/SL: " + p.conflictType + " (" + p.resolution + ")", 12, true);
+                    cTv.setTextColor(Color.YELLOW);
+                    item.addView(cTv);
+                }
+
+                if (!p.rejectionReason.isEmpty()) {
+                    TextView rTv = createTextView("سبب الرفض/الحظر: " + p.rejectionReason, 12, false);
+                    rTv.setTextColor(Color.RED);
+                    item.addView(rTv);
+                }
+
+                histCard.addView(item);
+            }
+
+            Button clearBtn = createSecondaryButton("🗑️ مسح سجل الصفقات الورقية", v -> {
+                TradeHistory.clearHistory(prefs);
+                Toast.makeText(this, "تم مسح سجل الصفقات الورقية بنجاح", Toast.LENGTH_SHORT).show();
+                showTradeDecisionCenterScreen();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 10, 0, 0);
+            histCard.addView(clearBtn, lp);
+        }
+        content.addView(histCard);
+    }
+
+    void runAIDecisionEngineEvaluation() {
+        String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
+
+        statusText.setText("🔄 جاري تجميع الإشارات وتقييم قرار الصفقة...");
+        statusText.setTextColor(secondaryColor);
+
+        executor.submit(() -> {
+            try {
+                List<MarketIntelligenceEngine.Bar> miBars = null;
+                boolean isMockData = false;
+
+                if (!apiKey.isEmpty()) {
+                    try {
+                        List<GoldAnalysisEngine.Bar> gBars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, "15min", apiKey, 150);
+                        if (gBars != null && !gBars.isEmpty()) {
+                            miBars = new ArrayList<>();
+                            for (GoldAnalysisEngine.Bar gb : gBars) {
+                                miBars.add(new MarketIntelligenceEngine.Bar(gb.o, gb.h, gb.l, gb.c, gb.v));
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (miBars == null || miBars.isEmpty()) {
+                    HistoricalDataProvider.HistoricalDataBatch mockBatch =
+                            HistoricalDataProvider.generateMockBars(GOLD_SYMBOL, "15min", 150, 2650.0, 42);
+                    miBars = mockBatch.bars;
+                    isMockData = true;
+                }
+
+                AIDecisionEngine aiEngine = new AIDecisionEngine();
+                AIDecisionResult result = aiEngine.evaluate(miBars, GOLD_SYMBOL, "15min", prefs);
+
+                currentAiDecisionResult = result;
+                AIDecisionHistory.saveDecision(prefs, result);
+
+                final boolean mockFlag = isMockData;
+                runOnUiThread(() -> {
+                    statusText.setText(mockFlag ? "⚠️ تم توليد القرار باستخدام (MOCK DATA)" : "✅ اكتمل تقييم القرار بنجاح!");
+                    statusText.setTextColor(mockFlag ? Color.YELLOW : Color.GREEN);
+                    showTradeDecisionCenterScreen();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    statusText.setText("❌ خطأ أثناء تقييم القرار: " + e.getMessage());
+                    statusText.setTextColor(Color.RED);
+                });
+            }
+        });
+    }
+
+    void displayAIDecisionResult(AIDecisionResult res) {
+        // 1. Decision Header & Quality Card
+        LinearLayout decCard = createCardBox();
+        decCard.addView(createTextView("📊 1. القرار النهائي للذكاء الاصطناعي", 18, true));
+
+        TextView decTv = createTextView("القرار: " + res.decision.name(), 28, true);
+        if (res.decision == AIDecisionResult.Decision.BUY) decTv.setTextColor(Color.GREEN);
+        else if (res.decision == AIDecisionResult.Decision.SELL) decTv.setTextColor(Color.RED);
+        else decTv.setTextColor(Color.YELLOW);
+        decCard.addView(decTv);
+
+        decCard.addView(createTextView("• السعر الحالي للذهب: $" + String.format(Locale.US, "%.2f", res.currentPrice), 15, true));
+        decCard.addView(createTextView("• درجة الثقة (Confidence): " + String.format(Locale.US, "%.1f%%", res.confidence), 15, true));
+        decCard.addView(createTextView("• شرح مكونات الثقة: " + res.confidenceExplanation, 12, false));
+        decCard.addView(createTextView("• جودة إعداد الصفقة (Trade Quality): " + res.tradeQuality.getArabicName() + " (" + String.format(Locale.US, "%.1f", res.tradeQualityScore) + "/100)", 14, true));
+        content.addView(decCard);
+
+        // 2. Market Regime & State
+        LinearLayout regimeCard = createCardBox();
+        regimeCard.addView(createTextView("🌐 2. حالة نظام السوق (Market Regime)", 16, true));
+        regimeCard.addView(createTextView("• حالة السوق الحالية: " + res.marketRegimeNameArabic, 14, true));
+        regimeCard.addView(createTextView("• نسبة الثقة بحالة السوق: " + String.format(Locale.US, "%.1f%%", res.marketRegimeConfidence), 14, false));
+        content.addView(regimeCard);
+
+        // 3. Signal Confluence
+        LinearLayout confCard = createCardBox();
+        confCard.addView(createTextView("⚡ 3. توافق الإشارات المتعددة (Signal Confluence)", 16, true));
+        confCard.addView(createTextView("• درجة التوافق (Confluence Score): " + String.format(Locale.US, "%.1f%%", res.confluenceScore) + " [" + res.confluenceLevel + "]", 14, true));
+        confCard.addView(createTextView("• الإشارات المؤيدة: " + res.supportingSignalsCount + " | المعارضة: " + res.conflictingSignalsCount + " | المحايدة: " + res.neutralSignalsCount, 14, false));
+
+        if (!res.supportingSignals.isEmpty()) {
+            confCard.addView(createTextView("✅ الإشارات المؤيدة:", 13, true));
+            for (String s : res.supportingSignals) confCard.addView(createTextView(" ✔ " + s, 12, false));
+        }
+        if (!res.conflictingSignals.isEmpty()) {
+            confCard.addView(createTextView("⚠️ الإشارات المعارضة:", 13, true));
+            for (String c : res.conflictingSignals) confCard.addView(createTextView(" ✖ " + c, 12, false));
+        }
+        content.addView(confCard);
+
+        // 4. Proposed Trade Setup (PAPER ONLY)
+        LinearLayout setupCard = createCardBox();
+        setupCard.addView(createTextView("📐 4. الصفقة المقترحة للتنفيذ الافتراضي (Paper Setup)", 16, true));
+        setupCard.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", res.entryPrice), 14, true));
+        setupCard.addView(createTextView("• وقف الخسارة (Stop Loss): $" + String.format(Locale.US, "%.2f", res.stopLoss), 14, true));
+        setupCard.addView(createTextView("• أخذ الربح (Take Profit): $" + String.format(Locale.US, "%.2f", res.takeProfit), 14, true));
+        setupCard.addView(createTextView("• نسبة المخاطرة إلى العائد (Risk/Reward): 1 : " + String.format(Locale.US, "%.2f", res.riskRewardRatio), 14, false));
+        setupCard.addView(createTextView("• حجم اللوت المحسوب (Position Lot): " + String.format(Locale.US, "%.2f", res.positionSizeLot) + " لوت", 14, true));
+
+        Button previewPaperBtn = createButton("📝 إنشاء صفقة ورقية", v -> showPaperTradePreviewDialog(res));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 10, 0, 0);
+        setupCard.addView(previewPaperBtn, lp);
+
+        if (res.decision == AIDecisionResult.Decision.WAIT || !res.riskApproved || KillSwitch.isActive(prefs)) {
+            TextView waitMsg = createTextView("⛔ التداول معطل لهذه الجلسة بسبب عدم استيفاء شروط الدخول أو اعتراض بوابة إدارة المخاطر أو مفتاح الطوارئ.", 13, true);
+            waitMsg.setTextColor(Color.YELLOW);
+            setupCard.addView(waitMsg);
+        }
+        content.addView(setupCard);
+
+        // 5. Reasons & Audit Trail
+        LinearLayout rationaleCard = createCardBox();
+        rationaleCard.addView(createTextView("📜 5. أسباب القرار وسجل التدقيق (Decision Audit Trail)", 16, true));
+        rationaleCard.addView(createTextView(res.arabicExplanation, 13, false));
+
+        if (!res.auditTrail.isEmpty()) {
+            rationaleCard.addView(createTextView("\n🔍 سجل التدقيق الفني (Audit Trail):", 13, true));
+            for (String line : res.auditTrail) {
+                rationaleCard.addView(createTextView("  • " + line, 11, false));
+            }
+        }
+        content.addView(rationaleCard);
+    }
+
+    void showPaperTradePreviewDialog(AIDecisionResult res) {
+        if (res == null) return;
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📝 معاينة إنشاء صفقة ورقية");
+
+        LinearLayout box = createCardBox();
+        box.addView(createTextView("تفاصيل القرار قبل الفتح الورقي:", 15, true));
+
+        TextView decTv = createTextView("• القرار: " + res.decision.name(), 16, true);
+        if (res.decision == AIDecisionResult.Decision.BUY) decTv.setTextColor(Color.GREEN);
+        else if (res.decision == AIDecisionResult.Decision.SELL) decTv.setTextColor(Color.RED);
+        else decTv.setTextColor(Color.YELLOW);
+        box.addView(decTv);
+
+        box.addView(createTextView("• سعر الدخول (Entry): $" + String.format(Locale.US, "%.2f", res.entryPrice), 14, false));
+        box.addView(createTextView("• وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", res.stopLoss), 14, false));
+        box.addView(createTextView("• أخذ الربح (TP): $" + String.format(Locale.US, "%.2f", res.takeProfit), 14, false));
+
+        double cap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+        double riskPct = Double.parseDouble(prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
+        double riskUsd = cap * (riskPct / 100.0);
+
+        box.addView(createTextView("• حجم اللوت (Position Lot): " + String.format(Locale.US, "%.2f", res.positionSizeLot) + " لوت", 14, true));
+        box.addView(createTextView("• مبلغ المخاطرة (Risk Amount): $" + String.format(Locale.US, "%.2f", riskUsd) + " (" + String.format(Locale.US, "%.1f%%", riskPct) + ")", 14, true));
+        box.addView(createTextView("• نسبة المخاطرة للعائد (R:R): 1 : " + String.format(Locale.US, "%.2f", res.riskRewardRatio), 14, false));
+        box.addView(createTextView("• درجة الثقة (Confidence): " + String.format(Locale.US, "%.1f%%", res.confidence), 14, false));
+        box.addView(createTextView("• درجة التوافق (Confluence): " + String.format(Locale.US, "%.1f%%", res.confluenceScore) + " [" + res.confluenceLevel + "]", 14, false));
+        box.addView(createTextView("• جودة الصفقة (Trade Quality): " + res.tradeQuality.getArabicName(), 14, false));
+        box.addView(createTextView("• حالة السوق (Market Regime): " + res.marketRegimeNameArabic, 14, false));
+
+        if (!res.decisionReasons.isEmpty()) {
+            box.addView(createTextView("\nأسباب القرار:", 13, true));
+            for (String reason : res.decisionReasons) {
+                box.addView(createTextView(" • " + reason, 12, false));
+            }
+        }
+
+        boolean killActive = KillSwitch.isActive(prefs);
+        boolean isEligible = res.decision != AIDecisionResult.Decision.WAIT && res.riskApproved && !killActive && res.entryPrice > 0;
+
+        if (!isEligible) {
+            TextView errTv = createTextView("\n⛔ لا يمكن تأكيد الفتح الورقي: " +
+                    (killActive ? "مفتاح الطوارئ مفعل." :
+                    (res.decision == AIDecisionResult.Decision.WAIT ? "القرار الحالي هو الانتظار (WAIT)." :
+                    (!res.riskApproved ? "مرفوضة من بوابة المخاطر: " + res.rejectionReason : "بيانات غير صالحة."))), 13, true);
+            errTv.setTextColor(Color.RED);
+            box.addView(errTv);
+        }
+
+        builder.setView(box);
+
+        if (isEligible) {
+            builder.setPositiveButton("تأكيد الصفقة الورقية", (dialog, which) -> {
+                PaperTradeEngine pEngine = new PaperTradeEngine();
+                TradePosition pos = pEngine.openPaperTradeFromAIDecision(res, prefs);
+                if (pos.status == TradePosition.Status.OPEN) {
+                    Toast.makeText(this, "تم تأكيد وفتح الصفقة الورقية بنجاح!", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "تم رفض الصفقة: " + pos.rejectionReason, Toast.LENGTH_LONG).show();
+                }
+                showTradeDecisionCenterScreen();
+            });
+        }
+
+        builder.setNegativeButton("إلغاء", null);
+        builder.show();
+    }
+
+    void displayAIDecisionHistorySection() {
+        LinearLayout histCard = createCardBox();
+        histCard.addView(createTextView("📜 سجل القرارات السابقة (Decision History Log)", 18, true));
+
+        List<AIDecisionResult> history = AIDecisionHistory.loadDecisionHistory(prefs);
+        if (history.isEmpty()) {
+            histCard.addView(createTextView("لا توجد قرارات سابقة مسجلة في السجل.", 13, false));
+        } else {
+            histCard.addView(createTextView("عدد القرارات المسجلة محلياً: " + history.size(), 13, true));
+
+            for (AIDecisionResult h : history) {
+                LinearLayout item = createCardBox();
+                TextView headerTv = createTextView("📌 " + h.decision.name() + " | " + h.symbol + " (" + h.timeframe + ")", 15, true);
+                if (h.decision == AIDecisionResult.Decision.BUY) headerTv.setTextColor(Color.GREEN);
+                else if (h.decision == AIDecisionResult.Decision.SELL) headerTv.setTextColor(Color.RED);
+                else headerTv.setTextColor(Color.YELLOW);
+                item.addView(headerTv);
+
+                item.addView(createTextView("الوقت: " + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(new Date(h.timestamp)) + " | الثقة: " + String.format(Locale.US, "%.1f%%", h.confidence), 13, false));
+                item.addView(createTextView("حالة السوق: " + h.marketRegimeNameArabic + " | Confluence: " + String.format(Locale.US, "%.1f%%", h.confluenceScore), 12, false));
+                item.addView(createTextView("جودة الصفقة: " + h.tradeQuality.getArabicName() + " | Risk Gate: " + (h.riskApproved ? "APPROVED ✅" : "REJECTED ❌"), 12, false));
+
+                LinearLayout btns = new LinearLayout(this);
+                btns.setOrientation(LinearLayout.HORIZONTAL);
+
+                Button viewBtn = createSecondaryButton("🔍 تفاصيل القرار", v -> displayAIDecisionResult(h));
+                Button delBtn = createSecondaryButton("🗑️ حذف", v -> {
+                    AIDecisionHistory.deleteDecisionById(prefs, h.decisionId);
+                    Toast.makeText(this, "تم حذف القرار من السجل", Toast.LENGTH_SHORT).show();
+                    showTradeDecisionCenterScreen();
+                });
+
+                btns.addView(viewBtn, new LinearLayout.LayoutParams(0, -2, 1));
+                btns.addView(delBtn, new LinearLayout.LayoutParams(0, -2, 1));
+                item.addView(btns);
+
+                histCard.addView(item);
+            }
+
+            Button clearAllBtn = createSecondaryButton("🗑️ مسح كافة سجلات القرارات", v -> {
+                AIDecisionHistory.clearHistory(prefs);
+                Toast.makeText(this, "تم مسح كافة القرارات المسجلة", Toast.LENGTH_SHORT).show();
+                showTradeDecisionCenterScreen();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, 10, 0, 0);
+            histCard.addView(clearAllBtn, lp);
+        }
+        content.addView(histCard);
+    }
+
+    // --- SCREEN 1.5: XAU/USD TRADING SCREEN (PHASE 7 EXECUTION ENGINE) ---
+    void showTradingScreen() {
+        setupBaseLayout("trading");
+
+        // 1. Trading Header Card
+        LinearLayout headerCard = createCardBox();
+        headerCard.addView(createTextView("⚡ شاشة التداول تنفيذ الأوامر — XAU/USD", 20, true));
+
+        double price = currentAnalysis != null ? currentAnalysis.currentPrice : 2650.0;
+        String signalStr = currentSignalResult != null ? currentSignalResult.signalType.name() : (currentAnalysis != null ? currentAnalysis.signal : "WAIT");
+
+        TextView priceTv = createTextView("💰 " + GOLD_SYMBOL + ": $" + String.format(Locale.US, "%.2f", price), 26, true);
+        priceTv.setTextColor(primaryColor);
+        headerCard.addView(priceTv);
+
+        TextView sigTv = createTextView("الاتجاه/الإشارة الحالية: " + signalStr, 16, true);
+        sigTv.setTextColor(signalStr.contains("BUY") ? Color.GREEN : (signalStr.contains("SELL") ? Color.RED : Color.YELLOW));
+        headerCard.addView(sigTv);
+
+        // Required Status Labels for Phase 7
+        TextView modeTv = createTextView("• وضع التداول الحالي: التداول الافتراضي (Paper Trading) 🟢", 14, true);
+        modeTv.setTextColor(Color.GREEN);
+        headerCard.addView(modeTv);
+
+        TextView liveStatusTv = createTextView("• التداول الحقيقي: غير مفعل — قريبًا 🔒", 14, true);
+        liveStatusTv.setTextColor(Color.parseColor("#FF9800"));
+        headerCard.addView(liveStatusTv);
+
+        content.addView(headerCard);
+
+        // 2. Kill Switch Management Card
+        LinearLayout killCard = createCardBox();
+        boolean killActive = KillSwitch.isActive(prefs);
+
+        if (killActive) {
+            GradientDrawable kGd = new GradientDrawable();
+            kGd.setColor(Color.parseColor("#3A1319"));
+            kGd.setCornerRadius(16);
+            kGd.setStroke(2, Color.RED);
+            killCard.setBackground(kGd);
+
+            TextView kTv = createTextView("⛔ نظام أمان الطوارئ (Kill Switch): مفعل 🔴", 16, true);
+            kTv.setTextColor(Color.RED);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("تم إيقاف تفعيل أو إنشاء أوامر تداول جديدة لحماية حسابك.", 13, false));
+
+            Button disableKBtn = createSecondaryButton("🟢 إيقاف مفتاح الطوارئ (Disable Kill Switch)", v -> {
+                KillSwitch.deactivate(prefs);
+                Toast.makeText(this, "تم إيقاف مفتاح الطوارئ. يمكن استئناف التداول الافتراضي.", Toast.LENGTH_SHORT).show();
+                showTradingScreen();
+            });
+            killCard.addView(disableKBtn);
+        } else {
+            TextView kTv = createTextView("🛡️ نظام أمان الطوارئ (Kill Switch): غير مفعل 🟢", 16, true);
+            kTv.setTextColor(Color.GREEN);
+            killCard.addView(kTv);
+            killCard.addView(createTextView("عند تفعيل مفتاح الطوارئ، سيتم منع فتح أو تنفيذ أي أوامر جديدة فوراً.", 13, false));
+
+            Button enableKBtn = createButton("🚨 تفعيل مفتاح طوارئ الأمان (Kill Switch)", v -> {
+                KillSwitch.activate(prefs);
+                Toast.makeText(this, "تم تفعيل مفتاح الطوارئ وحظر الأوامر الجديدة!", Toast.LENGTH_SHORT).show();
+                showTradingScreen();
+            });
+            enableKBtn.setBackgroundColor(Color.RED);
+            killCard.addView(enableKBtn);
+        }
+        content.addView(killCard);
+
+        // 3. New Order Execution Form
+        LinearLayout orderFormCard = createCardBox();
+        orderFormCard.addView(createTextView("📝 إنشاء أمر تداول جديد عبر ExecutionEngine", 18, true));
+
+        orderFormCard.addView(createTextView("نوع الأمر (Order Type):", 13, true));
+        Spinner orderTypeSpinner = new Spinner(this);
+        ArrayAdapter<String> orderTypeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Market Order", "Limit Order", "Stop Order"});
+        orderTypeSpinner.setAdapter(orderTypeAdapter);
+        orderFormCard.addView(orderTypeSpinner);
+
+        orderFormCard.addView(createTextView("الاتجاه (Action):", 13, true));
+        Spinner actionSpinner = new Spinner(this);
+        ArrayAdapter<String> actionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"BUY", "SELL"});
+        actionSpinner.setAdapter(actionAdapter);
+        orderFormCard.addView(actionSpinner);
+
+        orderFormCard.addView(createTextView("سعر الدخول المقترح ($):", 13, true));
+        EditText priceEd = createEditText("2650.0", String.format(Locale.US, "%.2f", price));
+        orderFormCard.addView(priceEd);
+
+        orderFormCard.addView(createTextView("وقف الخسارة Stop Loss ($):", 13, true));
+        double defaultSL = signalStr.contains("SELL") ? price + 5.0 : price - 5.0;
+        EditText slEd = createEditText("Stop Loss...", String.format(Locale.US, "%.2f", defaultSL));
+        orderFormCard.addView(slEd);
+
+        orderFormCard.addView(createTextView("أخذ الربح Take Profit ($):", 13, true));
+        double defaultTP = signalStr.contains("SELL") ? price - 10.0 : price + 10.0;
+        EditText tpEd = createEditText("Take Profit...", String.format(Locale.US, "%.2f", defaultTP));
+        orderFormCard.addView(tpEd);
+
+        orderFormCard.addView(createTextView("حجم اللوت (Position Size / Lots):", 13, true));
+        EditText lotEd = createEditText("0.1", "0.10");
+        orderFormCard.addView(lotEd);
+
+        Button submitOrderBtn = createButton("🚀 تنفيذ الأمر الافتراضي (Submit Order)", v -> {
+            try {
+                String typeStr = orderTypeSpinner.getSelectedItem().toString();
+                String actStr = actionSpinner.getSelectedItem().toString();
+
+                ExecutionOrder.OrderType oType = ExecutionOrder.OrderType.MARKET;
+                if (typeStr.contains("Limit")) oType = ExecutionOrder.OrderType.LIMIT;
+                else if (typeStr.contains("Stop")) oType = ExecutionOrder.OrderType.STOP;
+
+                ExecutionOrder.Action act = actStr.equals("BUY") ? ExecutionOrder.Action.BUY : ExecutionOrder.Action.SELL;
+
+                double reqPrice = Double.parseDouble(priceEd.getText().toString().trim());
+                double reqSL = Double.parseDouble(slEd.getText().toString().trim());
+                double reqTP = Double.parseDouble(tpEd.getText().toString().trim());
+                double reqLot = Double.parseDouble(lotEd.getText().toString().trim());
+
+                ExecutionOrder newOrder = new ExecutionOrder(act, oType, reqPrice, reqSL, reqTP, reqLot);
+                showOrderConfirmationDialog(newOrder);
+            } catch (Exception e) {
+                Toast.makeText(this, "يرجى التحقق من القيم المدخلة للأمر", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 10, 0, 0);
+        orderFormCard.addView(submitOrderBtn, lp);
+        content.addView(orderFormCard);
+
+        // 4. Order History Log Card
+        LinearLayout orderHistoryCard = createCardBox();
+        orderHistoryCard.addView(createTextView("📜 سجل الأوامر والصفقات الكلي (Order History Log)", 18, true));
+
+        List<ExecutionOrder> history = ExecutionEngine.loadOrderHistory(prefs);
+        if (history.isEmpty()) {
+            orderHistoryCard.addView(createTextView("لا يوجد أوامر مسجلة في السجل بعد.", 13, false));
+        } else {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                ExecutionOrder o = history.get(i);
+                LinearLayout item = createCardBox();
+
+                TextView titleTv = createTextView("📌 " + o.action.name() + " " + o.symbol + " (" + o.orderType.name() + ")", 15, true);
+                if (o.status == ExecutionOrder.OrderStatus.FILLED) titleTv.setTextColor(Color.GREEN);
+                else if (o.status == ExecutionOrder.OrderStatus.REJECTED || o.status == ExecutionOrder.OrderStatus.FAILED) titleTv.setTextColor(Color.RED);
+                else titleTv.setTextColor(Color.YELLOW);
+                item.addView(titleTv);
+
+                item.addView(createTextView("الوقت: " + o.createdTimestamp + " | الحالة: " + o.status.name(), 13, true));
+                item.addView(createTextView("سعر الأمر: $" + String.format(Locale.US, "%.2f", o.price) + " | سعر التنفيذ: $" + String.format(Locale.US, "%.2f", o.fillPrice), 13, false));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", o.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", o.takeProfit) + " | Lot: " + String.format(Locale.US, "%.2f", o.lotSize), 13, false));
+                item.addView(createTextView("المخاطرة: $" + String.format(Locale.US, "%.2f", o.riskAmount) + " | R:R: 1:" + String.format(Locale.US, "%.2f", o.riskRewardRatio), 13, false));
+
+                if (o.status == ExecutionOrder.OrderStatus.REJECTED || o.status == ExecutionOrder.OrderStatus.FAILED) {
+                    TextView rejTv = createTextView("سبب الرفض: " + o.rejectionReason, 13, true);
+                    rejTv.setTextColor(Color.RED);
+                    item.addView(rejTv);
+                }
+
+                if (o.status == ExecutionOrder.OrderStatus.PENDING) {
+                    LinearLayout actBtns = new LinearLayout(this);
+                    actBtns.setOrientation(LinearLayout.HORIZONTAL);
+
+                    Button cancelBtn = createSecondaryButton("إلغاء الأمر", v -> {
+                        executionEngine.cancelOrder(o.orderId, prefs);
+                        Toast.makeText(this, "تم إلغاء الأمر المعلق بنجاح!", Toast.LENGTH_SHORT).show();
+                        showTradingScreen();
+                    });
+                    actBtns.addView(cancelBtn);
+                    item.addView(actBtns);
+                }
+
+                orderHistoryCard.addView(item);
+            }
+        }
+        content.addView(orderHistoryCard);
+    }
+
+    // Modal Confirmation Dialog for Order Execution
+    void showOrderConfirmationDialog(ExecutionOrder order) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("⚠️ تأكيد تنفيذ أمر التداول الافتراضي");
+
+        LinearLayout box = createCardBox();
+        box.addView(createTextView("يرجى مراجعة تفاصيل الأمر قبل التنفيذ في ExecutionEngine:", 14, true));
+        box.addView(createTextView("• الرمز: " + order.symbol, 14, false));
+        box.addView(createTextView("• نوع الأمر: " + order.orderType.name(), 14, true));
+        box.addView(createTextView("• اتجاه الصفقة: " + order.action.name(), 14, true));
+        box.addView(createTextView("• سعر الدخول المطلوبة: $" + String.format(Locale.US, "%.2f", order.price), 14, false));
+        box.addView(createTextView("• وقف الخسارة (SL): $" + String.format(Locale.US, "%.2f", order.stopLoss), 14, false));
+        box.addView(createTextView("• أخذ الربح (TP): $" + String.format(Locale.US, "%.2f", order.takeProfit), 14, false));
+        box.addView(createTextView("• حجم اللوت (Lots): " + String.format(Locale.US, "%.2f", order.lotSize), 14, false));
+
+        double cap = Double.parseDouble(prefs.getString(PREF_KEY_CAPITAL, "10000"));
+        PortfolioManager.PortfolioSummary summary = PortfolioManager.calculateSummary(prefs);
+
+        builder.setView(box);
+        builder.setPositiveButton("تأكيد وتنفيذ الصفقة الافتراضية", (dialog, which) -> {
+            ExecutionOrder result = executionEngine.executeOrder(order, cap, summary.todayLossPnl, prefs);
+
+            if (result.status == ExecutionOrder.OrderStatus.FILLED || result.status == ExecutionOrder.OrderStatus.PENDING) {
+                new AlertDialog.Builder(this)
+                        .setTitle("✅ تم تنفيذ الأمر بنجاح")
+                        .setMessage("حالة الأمر: " + result.status.name() + "\n" +
+                                "سعر التنفيذ: $" + String.format(Locale.US, "%.2f", result.fillPrice) + "\n" +
+                                "مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", result.riskAmount) + "\n" +
+                                "ملاحظات: " + result.notes)
+                        .setPositiveButton("موافق", (d2, w2) -> showTradingScreen())
+                        .show();
+            } else {
+                new AlertDialog.Builder(this)
+                        .setTitle("❌ تم رفض الأمر (Risk / Security Blocked)")
+                        .setMessage("سبب الرفض:\n" + result.rejectionReason)
+                        .setPositiveButton("موافق", (d2, w2) -> showTradingScreen())
+                        .show();
+            }
+        });
+        builder.setNegativeButton("إلغاء", null);
+        builder.show();
     }
 
     // --- SCREEN 2: PORTFOLIO & RISK MANAGEMENT ---
@@ -805,18 +1518,15 @@ public class MainActivity extends Activity {
     }
 
     void executePaperTradeFromSetup(TradeSetup setup) {
-        GoldAnalysisEngine.AnalysisResult res = new GoldAnalysisEngine.AnalysisResult();
-        res.currentPrice = setup.entryPrice;
-        res.signal = setup.direction == TradeSetup.Direction.BUY ? "BUY SETUP 🟢" : "SELL SETUP 🔴";
-        res.confidenceScore = setup.confidence / 100.0;
-        res.entryPrice = setup.entryPrice;
-        res.stopLoss = setup.stopLoss;
-        res.takeProfit1 = setup.takeProfit;
-        res.takeProfit2 = setup.takeProfit;
-        res.riskRewardRatio = setup.riskRewardRatio;
-        res.arabicExplanation = setup.explanation;
+        ExecutionOrder order = new ExecutionOrder();
+        order.action = setup.direction == TradeSetup.Direction.BUY ? ExecutionOrder.Action.BUY : ExecutionOrder.Action.SELL;
+        order.orderType = ExecutionOrder.OrderType.MARKET;
+        order.price = setup.entryPrice;
+        order.stopLoss = setup.stopLoss;
+        order.takeProfit = setup.takeProfit;
+        order.signalSource = "TradeSetup Engine";
 
-        executePaperTradeFromSignalWithSource(res, "TradeSetup Engine");
+        showOrderConfirmationDialog(order);
     }
 
     void executePaperTradeFromSignal(GoldAnalysisEngine.AnalysisResult res) {
@@ -824,30 +1534,16 @@ public class MainActivity extends Activity {
     }
 
     void executePaperTradeFromSignalWithSource(GoldAnalysisEngine.AnalysisResult res, String sourceName) {
-        PortfolioManager.RiskValidationResult valRes = PortfolioManager.validateTradeRisk(prefs, res.entryPrice, res.stopLoss, res.takeProfit1, res.signal, sourceName);
+        ExecutionOrder order = new ExecutionOrder();
+        order.action = (res.signal != null && res.signal.contains("SELL")) ? ExecutionOrder.Action.SELL : ExecutionOrder.Action.BUY;
+        order.orderType = ExecutionOrder.OrderType.MARKET;
+        order.price = res.entryPrice;
+        order.stopLoss = res.stopLoss;
+        order.takeProfit = res.takeProfit1;
+        order.lotSize = res.suggestedLot > 0 ? res.suggestedLot : 0.1;
+        order.signalSource = sourceName;
 
-        if (!valRes.isAllowed) {
-            new AlertDialog.Builder(this)
-                    .setTitle("⚠️ رفض صفقة التداول الورقي (قواعد المخاطر)")
-                    .setMessage(valRes.messageArabic)
-                    .setPositiveButton("موافق", null)
-                    .show();
-        } else {
-            new AlertDialog.Builder(this)
-                    .setTitle("✅ قبول صفقة التداول الورقي")
-                    .setMessage(valRes.messageArabic + "\n\n• تفاصيل المخاطرة والأهداف:\n" +
-                            " - مبلغ المخاطرة: $" + String.format(Locale.US, "%.2f", valRes.riskAmountUsd) + "\n" +
-                            " - الربح المتوقع: $" + String.format(Locale.US, "%.2f", valRes.expectedProfitUsd) + "\n" +
-                            " - نسبة Risk/Reward: 1 : " + String.format(Locale.US, "%.2f", valRes.rrRatio) + "\n" +
-                            " - الحجم (Lot): " + String.format(Locale.US, "%.2f", valRes.lotSize))
-                    .setPositiveButton("تأكيد فتح الصفقة", (dialog, which) -> {
-                        PortfolioManager.executeTradeFromSignal(prefs, res, sourceName);
-                        Toast.makeText(this, "تم تسجيل الصفقة التجريبية في المحفظة بنجاح!", Toast.LENGTH_SHORT).show();
-                        showPortfolioScreen();
-                    })
-                    .setNegativeButton("إلغاء", null)
-                    .show();
-        }
+        showOrderConfirmationDialog(order);
     }
 
     void closePaperTrade(PaperTrade trade, boolean isWin) {
@@ -919,67 +1615,310 @@ public class MainActivity extends Activity {
         double entryPrice, stopLoss, tp1, tp2, pnl;
     }
 
-    // --- SCREEN 3: BACKTESTING ---
+    // --- SCREEN 3: BACKTESTING & STRATEGY VALIDATION ENGINE ---
     void showBacktestScreen() {
         setupBaseLayout("backtest");
 
         LinearLayout titleCard = createCardBox();
-        titleCard.addView(createTextView("🧪 محاكي الاختبار التاريخي (Backtesting)", 20, true));
-        titleCard.addView(createTextView("اختبر استراتيجية الذهب على البيانات التاريخية لتقييم الجدوى والأداء الإحصائي.", 13, false));
-
-        Button runBtn = createButton("🚀 تشغيل اختبار الذهب XAU/USD", v -> runBacktestProcess());
-        titleCard.addView(runBtn);
-
-        TextView backtestOut = createTextView("النتائج ستظهر هنا عند تشغيل الاختبار.", 14, false);
-        titleCard.addView(backtestOut);
+        titleCard.addView(createTextView("🧪 محاكي الاختبار التاريخي (Backtesting Engine)", 20, true));
+        titleCard.addView(createTextView("اختبر استراتيجية الذهب XAU/USD على البيانات التاريخية لتقييم الجدوى والنتائج الإحصائية دون Look-Ahead Bias.", 13, false));
         content.addView(titleCard);
+
+        // Inputs Card
+        LinearLayout paramCard = createCardBox();
+        paramCard.addView(createTextView("⚙️ إعدادات ومعايير الاختبار (Backtest Parameters)", 16, true));
+
+        paramCard.addView(createTextView("رمز الأصل (Symbol):", 13, true));
+        EditText symEd = createEditText("XAU/USD", GOLD_SYMBOL);
+        symEd.setEnabled(false);
+        paramCard.addView(symEd);
+
+        paramCard.addView(createTextView("رأس المال الابتدائي ($):", 13, true));
+        EditText capEd = createEditText("10000", prefs.getString(PREF_KEY_CAPITAL, "10000"));
+        paramCard.addView(capEd);
+
+        paramCard.addView(createTextView("الفاصل الزمني (Timeframe):", 13, true));
+        EditText tfEd = createEditText("15min / 1h", "15min");
+        paramCard.addView(tfEd);
+
+        paramCard.addView(createTextView("المخاطرة لكل صفقة (Risk %):", 13, true));
+        EditText riskEd = createEditText("1.0", prefs.getString(PREF_KEY_RISK_PCT, "1.0"));
+        paramCard.addView(riskEd);
+
+        paramCard.addView(createTextView("الفارق السعري Spread (بالدولار e.g. 0.20):", 13, true));
+        EditText spreadEd = createEditText("0.20", "0.20");
+        paramCard.addView(spreadEd);
+
+        paramCard.addView(createTextView("الانزلاق السعري Slippage (بالدولار e.g. 0.10):", 13, true));
+        EditText slipEd = createEditText("0.10", "0.10");
+        paramCard.addView(slipEd);
+
+        paramCard.addView(createTextView("العمولة Commission ($ لكل لوت):", 13, true));
+        EditText commEd = createEditText("2.00", "2.00");
+        paramCard.addView(commEd);
+
+        paramCard.addView(createTextView("نسبة العينة الداخلة In-Sample Ratio (1.0 = 100%, 0.7 = 70%):", 13, true));
+        EditText ratioEd = createEditText("1.0", "1.0");
+        paramCard.addView(ratioEd);
+
+        CheckBox wfBox = new CheckBox(this);
+        wfBox.setText("تشغيل تحليل Walk-Forward Validation المتنقل");
+        wfBox.setTextColor(textColor);
+        paramCard.addView(wfBox);
+
+        CheckBox mcBox = new CheckBox(this);
+        mcBox.setText("تشغيل اختبارات المتانة ومونتي كارلو (Monte Carlo Robustness)");
+        mcBox.setTextColor(textColor);
+        paramCard.addView(mcBox);
+
+        TextView btStatus = createTextView("جاهز لتشغيل الاختبار التاريخي.", 13, false);
+        btStatus.setTextColor(mutedColor);
+
+        Button runBtn = createButton("🚀 بدء الاختبار التاريخي (Run Backtest)", v -> {
+            btStatus.setText("⏳ جارٍ تشغيل الاختبار التاريخي والمحاكاة...");
+            btStatus.setTextColor(secondaryColor);
+
+            try {
+                BacktestEngine.BacktestParams p = new BacktestEngine.BacktestParams();
+                p.symbol = GOLD_SYMBOL;
+                p.initialCapital = Double.parseDouble(capEd.getText().toString().trim());
+                p.timeframe = tfEd.getText().toString().trim();
+                p.riskPerTradePct = Double.parseDouble(riskEd.getText().toString().trim());
+                p.spreadPips = Double.parseDouble(spreadEd.getText().toString().trim());
+                p.slippagePips = Double.parseDouble(slipEd.getText().toString().trim());
+                p.commissionPerLot = Double.parseDouble(commEd.getText().toString().trim());
+                p.inSampleRatio = Double.parseDouble(ratioEd.getText().toString().trim());
+
+                boolean runWf = wfBox.isChecked();
+                boolean runMc = mcBox.isChecked();
+
+                runBacktestProcessWithParams(p, runWf, runMc, btStatus);
+            } catch (Exception e) {
+                btStatus.setText("❌ خطأ في قيم المدخلات: " + e.getMessage());
+                btStatus.setTextColor(Color.RED);
+            }
+        });
+
+        paramCard.addView(runBtn);
+        paramCard.addView(btStatus);
+        content.addView(paramCard);
+
+        // Display Results if available
+        if (currentBacktestResult != null) {
+            displayBacktestResults(currentBacktestResult);
+        }
+
+        if (currentWfResult != null) {
+            displayWalkForwardResults(currentWfResult);
+        }
+
+        if (currentMcResult != null) {
+            displayMonteCarloResults(currentMcResult);
+        }
+
+        displaySavedBacktestsSection();
     }
 
-    void runBacktestProcess() {
+    void runBacktestProcessWithParams(BacktestEngine.BacktestParams params, boolean runWf, boolean runMc, TextView btStatus) {
         String apiKey = EncryptedPrefsHelper.getSecureString(prefs, PREF_KEY_API_KEY, "").trim();
 
         executor.submit(() -> {
             try {
-                List<GoldAnalysisEngine.Bar> bars = null;
+                List<MarketIntelligenceEngine.Bar> miBars = null;
                 if (!apiKey.isEmpty()) {
                     try {
-                        bars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, "1h", apiKey, 300);
-                    } catch (Exception e) {
-                        // Fall back to generated bars
-                    }
+                        List<GoldAnalysisEngine.Bar> gBars = GoldAnalysisEngine.fetchTwelveData(GOLD_SYMBOL, params.timeframe, apiKey, 300);
+                        if (gBars != null && !gBars.isEmpty()) {
+                            miBars = new ArrayList<>();
+                            for (GoldAnalysisEngine.Bar gb : gBars) {
+                                miBars.add(new MarketIntelligenceEngine.Bar(gb.o, gb.h, gb.l, gb.c, gb.v));
+                            }
+                        }
+                    } catch (Exception ignored) {}
                 }
 
-                if (bars == null || bars.isEmpty()) {
-                    bars = generateFallbackGoldBars(300);
+                if (miBars == null || miBars.isEmpty()) {
+                    HistoricalDataProvider.HistoricalDataBatch mockBatch =
+                            HistoricalDataProvider.generateMockBars(GOLD_SYMBOL, params.timeframe, 300, 2650.0, 42);
+                    miBars = mockBatch.bars;
                 }
 
-                BacktestEngine.BacktestResult bt = BacktestEngine.runGoldBacktest(bars, prefs);
+                BacktestEngine.BacktestResult btRes = BacktestEngine.runBacktest(miBars, params);
+                currentBacktestResult = btRes;
+
+                if (runWf) {
+                    currentWfResult = WalkForwardEngine.runWalkForward(miBars, 4, 0.7, params);
+                } else {
+                    currentWfResult = null;
+                }
+
+                if (runMc) {
+                    currentMcResult = MonteCarloEngine.runMonteCarlo(btRes, 200, 12345);
+                } else {
+                    currentMcResult = null;
+                }
 
                 runOnUiThread(() -> {
-                    showBacktestScreen(); // refresh screen view
-                    LinearLayout resCard = createCardBox();
-                    resCard.addView(createTextView("📊 نتائج اختبار استراتيجية الذهب (XAU/USD)", 18, true));
-                    resCard.addView(createTextView("• عدد الصفقات الكلي: " + bt.totalTrades, 14, true));
-                    resCard.addView(createTextView("• نسبة النجاح (Win Rate): " + String.format(Locale.US, "%.1f%%", bt.winRate * 100), 14, true));
-                    resCard.addView(createTextView("• نسبة الخسارة (Loss Rate): " + String.format(Locale.US, "%.1f%%", bt.lossRate * 100), 14, false));
-                    resCard.addView(createTextView("• إجمالي الأرباح: $" + String.format(Locale.US, "%.2f", bt.grossProfit), 14, false));
-                    resCard.addView(createTextView("• إجمالي الخسائر: $" + String.format(Locale.US, "%.2f", bt.grossLoss), 14, false));
-                    resCard.addView(createTextView("• صافي الأرباح/الخسائر (Net PnL): $" + String.format(Locale.US, "%+.2f", bt.netPnl), 15, true));
-                    resCard.addView(createTextView("• Profit Factor: " + String.format(Locale.US, "%.2f", bt.profitFactor), 14, true));
-                    resCard.addView(createTextView("• أقصى تراجع (Max Drawdown): " + String.format(Locale.US, "%.1f%%", bt.maxDrawdown * 100), 14, true));
-                    resCard.addView(createTextView("• متوسط الصفقة الرابحة: $" + String.format(Locale.US, "%.2f", bt.avgWin), 14, false));
-                    resCard.addView(createTextView("• متوسط الصفقة الخاسرة: $" + String.format(Locale.US, "%.2f", bt.avgLoss), 14, false));
-                    resCard.addView(createTextView("• أكبر خسارة فردية (Largest Loss): $" + String.format(Locale.US, "%.2f", bt.largestLoss), 14, true));
-                    resCard.addView(createTextView("• أطول سلسلة خسائر (Longest Losing Streak): " + bt.longestLosingStreak, 14, false));
-                    resCard.addView(createTextView("• رأس المال النهائي: $" + String.format(Locale.US, "%.2f", bt.finalCapital), 16, true));
-
-                    resCard.addView(createTextView("⚠️ تذكير: النتائج التاريخية لأغراض الدراسة والتقييم ولا تعني بالضرورة أرباحاً مستقبلية مضمونة.", 12, false));
-                    content.addView(resCard);
+                    btStatus.setText("✅ اكتمل الاختبار التاريخي والمحاكاة بنجاح!");
+                    btStatus.setTextColor(Color.GREEN);
+                    showBacktestScreen();
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "خطأ في الاختبار: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                runOnUiThread(() -> {
+                    btStatus.setText("❌ خطأ أثناء تشغيل الاختبار: " + e.getMessage());
+                    btStatus.setTextColor(Color.RED);
+                });
             }
         });
+    }
+
+    void displayBacktestResults(BacktestEngine.BacktestResult bt) {
+        LinearLayout resCard = createCardBox();
+        resCard.addView(createTextView("📊 1. إحصائيات نتائج الاختبار التاريخي (Backtest Statistics)", 18, true));
+
+        resCard.addView(createTextView("• الرمز والجلسة: " + bt.params.symbol + " (" + bt.params.timeframe + ")", 14, true));
+        resCard.addView(createTextView("• رأس المال الابتدائي (Initial Capital): $" + String.format(Locale.US, "%.2f", bt.initialCapital), 14, false));
+        resCard.addView(createTextView("• الرصيد النهائي (Final Equity): $" + String.format(Locale.US, "%.2f", bt.finalCapital), 15, true));
+
+        TextView pnlTv = createTextView("• صافي الأرباح (Net Profit): $" + String.format(Locale.US, "%+.2f", bt.netPnl) + " (" + String.format(Locale.US, "%+.2f%%", bt.netPnlPct) + ")", 16, true);
+        pnlTv.setTextColor(bt.netPnl >= 0 ? Color.GREEN : Color.RED);
+        resCard.addView(pnlTv);
+
+        resCard.addView(createTextView("• إجمالي الصفقات (Total Trades): " + bt.totalTrades + " (الرابحة: " + bt.winningTrades + " | الخاسرة: " + bt.losingTrades + ")", 14, true));
+        resCard.addView(createTextView("• نسبة النجاح (Win Rate): " + String.format(Locale.US, "%.1f%%", bt.winRate * 100), 14, true));
+        resCard.addView(createTextView("• معامل الربحية (Profit Factor): " + String.format(Locale.US, "%.2f", bt.profitFactor), 14, true));
+        resCard.addView(createTextView("• أقصى انخفاض (Max Drawdown): $" + String.format(Locale.US, "%.2f", bt.drawdownAnalysis.maxDrawdownAmount) + " (" + String.format(Locale.US, "%.2f%%", bt.maxDrawdownPct) + ")", 14, true));
+        resCard.addView(createTextView("• متوسط الصفقة الرابحة: $" + String.format(Locale.US, "%.2f", bt.avgWin), 13, false));
+        resCard.addView(createTextView("• متوسط الصفقة الخاسرة: $" + String.format(Locale.US, "%.2f", bt.avgLoss), 13, false));
+        resCard.addView(createTextView("• أكبر صفقة رابحة: $" + String.format(Locale.US, "%.2f", bt.largestWin), 13, false));
+        resCard.addView(createTextView("• أكبر صفقة خاسرة: $" + String.format(Locale.US, "%.2f", bt.largestLoss), 13, false));
+        resCard.addView(createTextView("• متوسط الربح لكل صفقة (Avg Trade PnL): $" + String.format(Locale.US, "%+.2f", bt.avgTradePnl), 14, false));
+        resCard.addView(createTextView("• أطول سلسلة صفقات خاسرة متتالية: " + bt.longestLosingStreak, 13, false));
+        resCard.addView(createTextView("• متوسط نسبة المخاطرة إلى العائد (Avg R:R): 1 : " + String.format(Locale.US, "%.2f", bt.avgRiskReward), 14, false));
+
+        Button saveRunBtn = createButton("💾 حفظ نتيجة هذا الاختبار محليًا", v -> {
+            BacktestEngine.saveBacktestRun(prefs, bt);
+            Toast.makeText(this, "تم حفظ نتيجة الاختبار بنجاح!", Toast.LENGTH_SHORT).show();
+            showBacktestScreen();
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 10, 0, 0);
+        resCard.addView(saveRunBtn, lp);
+
+        content.addView(resCard);
+
+        // 2. Drawdown Analysis Card
+        LinearLayout ddCard = createCardBox();
+        ddCard.addView(createTextView("📉 2. تحليل التراجع والتعافي (Drawdown Analysis)", 16, true));
+        ddCard.addView(createTextView("• أقصى قيمة انخفاض (Peak-to-Trough): $" + String.format(Locale.US, "%.2f", bt.drawdownAnalysis.maxDrawdownAmount) + " (" + String.format(Locale.US, "%.2f%%", bt.drawdownAnalysis.maxDrawdownPct) + ")", 14, true));
+        ddCard.addView(createTextView("• وقت بداية الانخفاض: " + (bt.drawdownAnalysis.drawdownStartTime.isEmpty() ? "لا يوجد" : bt.drawdownAnalysis.drawdownStartTime), 13, false));
+        ddCard.addView(createTextView("• وقت القاع (Trough Time): " + (bt.drawdownAnalysis.troughTime.isEmpty() ? "لا يوجد" : bt.drawdownAnalysis.troughTime) + " (القيمة: $" + String.format(Locale.US, "%.2f", bt.drawdownAnalysis.troughValue) + ")", 13, false));
+        ddCard.addView(createTextView("• مدة التعافي (Recovery Duration): " + (bt.drawdownAnalysis.recoveryDurationBars > 0 ? bt.drawdownAnalysis.recoveryDurationBars + " شمعة" : "غير متعافى بعد"), 13, false));
+        ddCard.addView(createTextView("• أطول سلسلة صفقات خاسرة: " + bt.drawdownAnalysis.longestLosingStreak + " صفقات", 13, false));
+        content.addView(ddCard);
+
+        // 3. Equity Curve Card
+        LinearLayout eqCard = createCardBox();
+        eqCard.addView(createTextView("📈 3. منحنى رأس المال (Equity Curve)", 16, true));
+        if (bt.equityCurve != null && !bt.equityCurve.isEmpty()) {
+            eqCard.addView(createTextView("تطور الرصيد خلال فترة الاختبار (" + bt.equityCurve.size() + " نقطة مسجلة):", 13, false));
+            int step = Math.max(1, bt.equityCurve.size() / 10);
+            for (int i = 0; i < bt.equityCurve.size(); i += step) {
+                BacktestEngine.EquityPoint eqP = bt.equityCurve.get(i);
+                eqCard.addView(createTextView(" • [" + eqP.timeStr + "] السعر: $" + String.format(Locale.US, "%.2f", eqP.price) + " | Balance: $" + String.format(Locale.US, "%.2f", eqP.balance) + " | DD: " + String.format(Locale.US, "%.2f%%", eqP.drawdownPct), 12, false));
+            }
+        }
+        content.addView(eqCard);
+
+        // 4. Detailed Trade Log Card
+        LinearLayout logCard = createCardBox();
+        logCard.addView(createTextView("📜 4. سجل الصفقات التفصيلي (Trade-by-Trade Log)", 16, true));
+        if (bt.trades != null && !bt.trades.isEmpty()) {
+            for (BacktestEngine.BacktestTrade t : bt.trades) {
+                LinearLayout item = createCardBox();
+                TextView headerTv = createTextView("#" + t.tradeIndex + " " + t.direction + " | Lot: " + String.format(Locale.US, "%.2f", t.lotSize) + " (" + t.outcome + ")", 14, true);
+                headerTv.setTextColor("WIN".equals(t.outcome) ? Color.GREEN : Color.RED);
+                item.addView(headerTv);
+
+                item.addView(createTextView("الدخول: $" + String.format(Locale.US, "%.2f", t.entryPrice) + " (" + t.entryTime + ") | الخروج: $" + String.format(Locale.US, "%.2f", t.exitPrice) + " (" + t.exitTime + ")", 12, false));
+                item.addView(createTextView("SL: $" + String.format(Locale.US, "%.2f", t.stopLoss) + " | TP: $" + String.format(Locale.US, "%.2f", t.takeProfit) + " | مدة الصفقة: " + t.durationBars + " شمعة", 12, false));
+
+                TextView pnlTv2 = createTextView("النتيجة PnL: $" + String.format(Locale.US, "%+.2f", t.pnlUsd) + " (" + String.format(Locale.US, "%+.2f%%", t.pnlPercentage) + ") | العمولة والانزلاق: $" + String.format(Locale.US, "%.2f", t.commissionPaidUsd + t.spreadSlippageCostUsd), 13, true);
+                pnlTv2.setTextColor(t.pnlUsd >= 0 ? Color.GREEN : Color.RED);
+                item.addView(pnlTv2);
+
+                item.addView(createTextView("سبب الخروج: " + t.exitReason + " | سبب الدخول: " + t.entryReason, 11, false));
+                logCard.addView(item);
+            }
+        } else {
+            logCard.addView(createTextView("لم يتم فتح أي صفقة أثناء فترة الاختبار.", 13, false));
+        }
+        content.addView(logCard);
+    }
+
+    void displayWalkForwardResults(WalkForwardEngine.WalkForwardResult wf) {
+        LinearLayout wfCard = createCardBox();
+        wfCard.addView(createTextView("🔄 نتائج Walk-Forward Analysis", 18, true));
+        wfCard.addView(createTextView("• عدد الفترات المتنقلة (Windows): " + wf.totalWindows, 14, true));
+        wfCard.addView(createTextView("• إجمالي أرباح العينة الداخلة (In-Sample PnL): $" + String.format(Locale.US, "%+.2f", wf.overallInSampleNetPnl), 14, false));
+        wfCard.addView(createTextView("• إجمالي أرباح العينة الخارجة (Out-of-Sample PnL): $" + String.format(Locale.US, "%+.2f", wf.overallOutOfSampleNetPnl), 14, true));
+        wfCard.addView(createTextView("• نسبة النجاح خارج العينة (OOS Win Rate): " + String.format(Locale.US, "%.1f%%", wf.outOfSampleWinRate * 100), 14, true));
+        wfCard.addView(createTextView("• معامل كفاءة Walk-Forward Efficiency: " + String.format(Locale.US, "%.2f", wf.walkForwardEfficiencyRatio), 15, true));
+
+        if (wf.windows != null && !wf.windows.isEmpty()) {
+            wfCard.addView(createTextView("\nتفاصيل الفترات المتنقلة:", 13, true));
+            for (WalkForwardEngine.WalkForwardWindow w : wf.windows) {
+                wfCard.addView(createTextView(" • " + w.toString(), 12, false));
+            }
+        }
+        content.addView(wfCard);
+    }
+
+    void displayMonteCarloResults(MonteCarloEngine.MonteCarloResult mc) {
+        LinearLayout mcCard = createCardBox();
+        mcCard.addView(createTextView("🎲 نتائج محاكاة مونتي كارلو ومتانة الاستراتيجية (Monte Carlo)", 18, true));
+        mcCard.addView(createTextView("• عدد التكرارات العشوائية: " + mc.iterations + " محاكاة", 14, false));
+        mcCard.addView(createTextView("• متوسط رأس المال المتوقع: $" + String.format(Locale.US, "%.2f", mc.meanFinalEquity), 14, true));
+        mcCard.addView(createTextView("• الرصيد عند درجة ثقة 95% (Worst 5% Equity): $" + String.format(Locale.US, "%.2f", mc.percentile5FinalEquity), 14, true));
+        mcCard.addView(createTextView("• متوسط أقصى انخفاض متوقع (Mean Max DD): " + String.format(Locale.US, "%.2f%%", mc.meanMaxDrawdownPct), 14, false));
+        mcCard.addView(createTextView("• أسوأ انخفاض عند درجة ثقة 95%: " + String.format(Locale.US, "%.2f%%", mc.percentile95DrawdownPct), 14, true));
+        mcCard.addView(createTextView("• احتمالية التعثر الإحصائي (Risk of Ruin >50% DD): " + String.format(Locale.US, "%.1f%%", mc.riskOfRuinPercentage), 14, true));
+        content.addView(mcCard);
+    }
+
+    void displaySavedBacktestsSection() {
+        LinearLayout savedCard = createCardBox();
+        savedCard.addView(createTextView("📚 المكتبة ومقارنة الاختبارات المحفوظة (Saved Runs & Comparison)", 18, true));
+
+        List<BacktestEngine.BacktestResult> savedRuns = BacktestEngine.loadBacktestRuns(prefs);
+        if (savedRuns.isEmpty()) {
+            savedCard.addView(createTextView("لا توجد اختبارات محفوظة في المكتبة بعد.", 13, false));
+        } else {
+            savedCard.addView(createTextView("تم التثبيت محلياً (" + savedRuns.size() + " اختبارات):", 13, true));
+
+            for (BacktestEngine.BacktestResult r : savedRuns) {
+                LinearLayout item = createCardBox();
+                item.addView(createTextView("📌 " + r.runId + " | " + r.runTimestamp, 14, true));
+                item.addView(createTextView("Net PnL: $" + String.format(Locale.US, "%+.2f", r.netPnl) + " (" + String.format(Locale.US, "%+.2f%%", r.netPnlPct) + ") | Win Rate: " + String.format(Locale.US, "%.1f%%", r.winRate * 100) + " | Profit Factor: " + String.format(Locale.US, "%.2f", r.profitFactor), 13, false));
+                item.addView(createTextView("Max DD: " + String.format(Locale.US, "%.2f%%", r.maxDrawdownPct) + " | Trades: " + r.totalTrades + " | TF: " + r.params.timeframe, 12, false));
+                savedCard.addView(item);
+            }
+
+            if (savedRuns.size() >= 2) {
+                Button compareBtn = createSecondaryButton("📊 عرض الجدول المقارن للاختبارات المحفوظة", v -> {
+                    String tableText = BacktestEngine.buildArabicComparisonTable(savedRuns);
+                    new AlertDialog.Builder(this)
+                            .setTitle("📊 جدول مقارنة الاختبارات المحفوظة")
+                            .setMessage(tableText)
+                            .setPositiveButton("إغلاق", null)
+                            .show();
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                lp.setMargins(0, 10, 0, 0);
+                savedCard.addView(compareBtn, lp);
+            }
+        }
+        content.addView(savedCard);
     }
 
     // --- SCREEN 3.5: MARKET INTELLIGENCE ---
@@ -1032,7 +1971,9 @@ public class MainActivity extends Activity {
                     }
 
                     if (miBars == null || miBars.isEmpty()) {
-                        miBars = generateFallbackMiBars(150);
+                        HistoricalDataProvider.HistoricalDataBatch mockBatch =
+                                HistoricalDataProvider.generateMockBars(GOLD_SYMBOL, tf, 150, 2650.0, 42);
+                        miBars = mockBatch.bars;
                     }
 
                     MarketIntelligenceEngine miEngine = new MarketIntelligenceEngine();
@@ -1132,7 +2073,7 @@ public class MainActivity extends Activity {
 
         signalCard.addView(createTextView("\n⛔ ملحوظة: لا يتم تنفيذ أي تداول حقيقي تلقائياً. هذه إشارة تحليلية تعليمية.", 12, false));
 
-        Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى التداول الورقي", v -> executePaperTradeFromMiSignal(r));
+        Button sendPaperBtn = createButton("📝 إرسال الإشارة إلى ExecutionEngine", v -> executePaperTradeFromMiSignal(r));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 12, 0, 0);
         signalCard.addView(sendPaperBtn, lp);
@@ -1166,41 +2107,6 @@ public class MainActivity extends Activity {
         res.arabicExplanation = miRes.signalReason;
 
         executePaperTradeFromSignalWithSource(res, "ذكاء السوق");
-    }
-
-    // --- FALLBACK DATA GENERATORS ---
-    List<GoldAnalysisEngine.Bar> generateFallbackGoldBars(int count) {
-        List<GoldAnalysisEngine.Bar> list = new ArrayList<>();
-        double price = 2650.0;
-        Random rnd = new Random(42);
-        for (int i = 0; i < count; i++) {
-            double change = (rnd.nextDouble() - 0.48) * 4.0;
-            double open = price;
-            double close = open + change;
-            double high = Math.max(open, close) + rnd.nextDouble() * 2.0;
-            double low = Math.min(open, close) - rnd.nextDouble() * 2.0;
-            double vol = 1000 + rnd.nextInt(5000);
-            list.add(new GoldAnalysisEngine.Bar(open, high, low, close, vol));
-            price = close;
-        }
-        return list;
-    }
-
-    List<MarketIntelligenceEngine.Bar> generateFallbackMiBars(int count) {
-        List<MarketIntelligenceEngine.Bar> list = new ArrayList<>();
-        double price = 2650.0;
-        Random rnd = new Random(42);
-        for (int i = 0; i < count; i++) {
-            double change = (rnd.nextDouble() - 0.48) * 4.0;
-            double open = price;
-            double close = open + change;
-            double high = Math.max(open, close) + rnd.nextDouble() * 2.0;
-            double low = Math.min(open, close) - rnd.nextDouble() * 2.0;
-            double vol = 1000 + rnd.nextInt(5000);
-            list.add(new MarketIntelligenceEngine.Bar(open, high, low, close, vol));
-            price = close;
-        }
-        return list;
     }
 
     // --- SCREEN 4: AI ASSISTANT ---
